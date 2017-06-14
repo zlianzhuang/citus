@@ -46,7 +46,7 @@ typedef struct ShardInterval
 } ShardInterval;
 
 
-/* In-memory representation of a tuple in pg_dist_shard_placement. */
+/* In-memory representation of a tuple in pg_dist_placement. */
 typedef struct ShardPlacement
 {
 	CitusNode type;
@@ -54,6 +54,9 @@ typedef struct ShardPlacement
 	uint64 shardId;
 	uint64 shardLength;
 	RelayFileState shardState;
+	uint32 groupId;
+
+	/* These fields aren't actually in pg_dist_placement but are convenient to keep */
 	char *nodeName;
 	uint32 nodePort;
 	char partitionMethod;
@@ -85,15 +88,14 @@ extern void InsertShardRow(Oid relationId, uint64 shardId, char storageType,
 extern void DeleteShardRow(uint64 shardId);
 extern void InsertShardPlacementRow(uint64 shardId, uint64 placementId,
 									char shardState, uint64 shardLength,
-									char *nodeName, uint32 nodePort);
+									uint32 groupId);
 extern void InsertIntoPgDistPartition(Oid relationId, char distributionMethod,
 									  Var *distributionColumn, uint32 colocationId,
 									  char replicationModel);
 extern void DeletePartitionRow(Oid distributedRelationId);
 extern void DeleteShardRow(uint64 shardId);
 extern void UpdateShardPlacementState(uint64 placementId, char shardState);
-extern uint64 DeleteShardPlacementRow(uint64 shardId, char *workerName, uint32
-									  workerPort);
+extern uint64 DeleteShardPlacementRow(uint64 shardId, uint32 workerGroup);
 extern void UpdateColocationGroupReplicationFactor(uint32 colocationId,
 												   int replicationFactor);
 extern void CreateTruncateTrigger(Oid relationId);

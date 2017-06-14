@@ -34,7 +34,7 @@
 #include "distributed/pg_dist_node.h"
 #include "distributed/pg_dist_partition.h"
 #include "distributed/pg_dist_shard.h"
-#include "distributed/pg_dist_shard_placement.h"
+#include "distributed/pg_dist_placement.h"
 #include "distributed/shardinterval_utils.h"
 #include "distributed/worker_manager.h"
 #include "distributed/worker_protocol.h"
@@ -84,7 +84,7 @@ typedef struct ShardCacheEntry
 /* state which should be cleared upon DROP EXTENSION */
 static bool extensionLoaded = false;
 static Oid distShardRelationId = InvalidOid;
-static Oid distShardPlacementRelationId = InvalidOid;
+static Oid distPlacementRelationId = InvalidOid;
 static Oid distNodeRelationId = InvalidOid;
 static Oid distLocalGroupRelationId = InvalidOid;
 static Oid distColocationRelationId = InvalidOid;
@@ -95,9 +95,9 @@ static Oid distPartitionLogicalRelidIndexId = InvalidOid;
 static Oid distPartitionColocationidIndexId = InvalidOid;
 static Oid distShardLogicalRelidIndexId = InvalidOid;
 static Oid distShardShardidIndexId = InvalidOid;
-static Oid distShardPlacementShardidIndexId = InvalidOid;
-static Oid distShardPlacementPlacementidIndexId = InvalidOid;
-static Oid distShardPlacementNodeidIndexId = InvalidOid;
+static Oid distPlacementShardidIndexId = InvalidOid;
+static Oid distPlacementPlacementidIndexId = InvalidOid;
+static Oid distPlacementGroupidIndexId = InvalidOid;
 static Oid distTransactionRelationId = InvalidOid;
 static Oid distTransactionGroupIndexId = InvalidOid;
 static Oid extraDataContainerFuncId = InvalidOid;
@@ -1439,13 +1439,13 @@ DistShardRelationId(void)
 }
 
 
-/* return oid of pg_dist_shard_placement relation */
+/* return oid of pg_dist_placement relation */
 Oid
-DistShardPlacementRelationId(void)
+DistPlacementRelationId(void)
 {
-	CachedRelationLookup("pg_dist_shard_placement", &distShardPlacementRelationId);
+	CachedRelationLookup("pg_dist_placement", &distPlacementRelationId);
 
-	return distShardPlacementRelationId;
+	return distPlacementRelationId;
 }
 
 
@@ -1554,25 +1554,25 @@ DistShardShardidIndexId(void)
 }
 
 
-/* return oid of pg_dist_shard_placement_shardid_index */
+/* return oid of pg_dist_placement_shardid_index */
 Oid
-DistShardPlacementShardidIndexId(void)
+DistPlacementShardidIndexId(void)
 {
-	CachedRelationLookup("pg_dist_shard_placement_shardid_index",
-						 &distShardPlacementShardidIndexId);
+	CachedRelationLookup("pg_dist_placement_shardid_index",
+						 &distPlacementShardidIndexId);
 
-	return distShardPlacementShardidIndexId;
+	return distPlacementShardidIndexId;
 }
 
 
-/* return oid of pg_dist_shard_placement_shardid_index */
+/* return oid of pg_dist_placement_placementid_index */
 Oid
-DistShardPlacementPlacementidIndexId(void)
+DistPlacementPlacementidIndexId(void)
 {
-	CachedRelationLookup("pg_dist_shard_placement_placementid_index",
-						 &distShardPlacementPlacementidIndexId);
+	CachedRelationLookup("pg_dist_placement_placementid_index",
+						 &distPlacementPlacementidIndexId);
 
-	return distShardPlacementPlacementidIndexId;
+	return distPlacementPlacementidIndexId;
 }
 
 
@@ -1597,14 +1597,14 @@ DistTransactionGroupIndexId(void)
 }
 
 
-/* return oid of pg_dist_shard_placement_nodeid_index */
+/* return oid of pg_dist_placement_groupid_index */
 Oid
-DistShardPlacementNodeidIndexId(void)
+DistPlacementGroupidIndexId(void)
 {
-	CachedRelationLookup("pg_dist_shard_placement_nodeid_index",
-						 &distShardPlacementNodeidIndexId);
+	CachedRelationLookup("pg_dist_placement_groupid_index",
+						 &distPlacementGroupidIndexId);
 
-	return distShardPlacementNodeidIndexId;
+	return distPlacementGroupidIndexId;
 }
 
 
@@ -1860,7 +1860,7 @@ master_dist_shard_cache_invalidate(PG_FUNCTION_ARGS)
 
 /*
  * master_dist_placmeent_cache_invalidate is a trigger function that performs
- * relcache invalidations when the contents of pg_dist_shard_placement are
+ * relcache invalidations when the contents of pg_dist_placement are
  * changed on the SQL level.
  *
  * NB: We decided there is little point in checking permissions here, there
@@ -1889,16 +1889,16 @@ master_dist_placement_cache_invalidate(PG_FUNCTION_ARGS)
 	/* collect shardid for OLD and NEW tuple */
 	if (oldTuple != NULL)
 	{
-		Form_pg_dist_shard_placement distPlacement =
-			(Form_pg_dist_shard_placement) GETSTRUCT(oldTuple);
+		Form_pg_dist_placement distPlacement =
+			(Form_pg_dist_placement) GETSTRUCT(oldTuple);
 
 		oldShardId = distPlacement->shardid;
 	}
 
 	if (newTuple != NULL)
 	{
-		Form_pg_dist_shard_placement distPlacement =
-			(Form_pg_dist_shard_placement) GETSTRUCT(newTuple);
+		Form_pg_dist_placement distPlacement =
+			(Form_pg_dist_placement) GETSTRUCT(newTuple);
 
 		newShardId = distPlacement->shardid;
 	}
@@ -2386,7 +2386,7 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 	{
 		extensionLoaded = false;
 		distShardRelationId = InvalidOid;
-		distShardPlacementRelationId = InvalidOid;
+		distPlacementRelationId = InvalidOid;
 		distLocalGroupRelationId = InvalidOid;
 		distNodeRelationId = InvalidOid;
 		distColocationRelationId = InvalidOid;
@@ -2397,8 +2397,8 @@ InvalidateDistRelationCacheCallback(Datum argument, Oid relationId)
 		distPartitionColocationidIndexId = InvalidOid;
 		distShardLogicalRelidIndexId = InvalidOid;
 		distShardShardidIndexId = InvalidOid;
-		distShardPlacementShardidIndexId = InvalidOid;
-		distShardPlacementPlacementidIndexId = InvalidOid;
+		distPlacementShardidIndexId = InvalidOid;
+		distPlacementPlacementidIndexId = InvalidOid;
 		distTransactionRelationId = InvalidOid;
 		distTransactionGroupIndexId = InvalidOid;
 		extraDataContainerFuncId = InvalidOid;

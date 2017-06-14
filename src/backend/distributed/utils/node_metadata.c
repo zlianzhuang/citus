@@ -229,6 +229,18 @@ master_activate_node(PG_FUNCTION_ARGS)
 
 
 /*
+ * GroupForNode returns the group which a given node belongs to
+ */
+uint32
+GroupForNode(char *nodeName, int nodePort)
+{
+	// Do we need to lock anything?
+	WorkerNode *workerNode = FindWorkerNode(nodeName, nodePort);
+	return workerNode->groupId;
+}
+
+
+/*
  * ActivateNode activates the node with nodeName and nodePort. Currently, activation
  * includes only replicating the reference tables and setting isactive column of the
  * given node.

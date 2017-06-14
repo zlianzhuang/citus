@@ -255,7 +255,7 @@ ReplicateShardToAllWorkers(ShardInterval *shardInterval)
  * ReplicateShardToNode function replicates given shard to the given worker node
  * in a separate transaction. While replicating, it only replicates the shard to the
  * workers which does not have a healthy replica of the shard. This function also modifies
- * metadata by inserting/updating related rows in pg_dist_shard_placement.
+ * metadata by inserting/updating related rows in pg_dist_placement.
  */
 static void
 ReplicateShardToNode(ShardInterval *shardInterval, char *nodeName, int nodePort)
@@ -294,9 +294,10 @@ ReplicateShardToNode(ShardInterval *shardInterval, char *nodeName, int nodePort)
 												   ddlCommandList);
 		if (targetPlacement == NULL)
 		{
+			uint32 groupId = GroupForNode(nodeName, nodePort);
+
 			placementId = GetNextPlacementId();
-			InsertShardPlacementRow(shardId, placementId, FILE_FINALIZED, 0,
-									nodeName, nodePort);
+			InsertShardPlacementRow(shardId, placementId, FILE_FINALIZED, 0, groupId);
 		}
 		else
 		{
@@ -411,10 +412,11 @@ DeleteAllReferenceTablePlacementsFromNode(char *workerName, uint32 workerPort)
 		uint64 shardId = shardInterval->shardId;
 		uint64 placementId = INVALID_PLACEMENT_ID;
 		StringInfo deletePlacementCommand = makeStringInfo();
+		uint32 workerGroup = GroupForNode(workerName, workerPort);
 
 		LockShardDistributionMetadata(shardId, ExclusiveLock);
 
-		placementId = DeleteShardPlacementRow(shardId, workerName, workerPort);
+		placementId = DeleteShardPlacementRow(shardId, workerGroup);
 
 		appendStringInfo(deletePlacementCommand,
 						 "DELETE FROM pg_dist_shard_placement WHERE placementid=%lu",

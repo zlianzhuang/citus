@@ -117,11 +117,10 @@ worker_drop_distributed_table(PG_FUNCTION_ARGS)
 		foreach(shardPlacementCell, shardPlacementList)
 		{
 			ShardPlacement *placement = (ShardPlacement *) lfirst(shardPlacementCell);
-			char *workerName = placement->nodeName;
-			uint32 workerPort = placement->nodePort;
+			uint32 groupId = placement->groupId;
 
-			/* delete the row from pg_dist_shard_placement */
-			DeleteShardPlacementRow(shardId, workerName, workerPort);
+			/* delete the row from pg_dist_placement */
+			DeleteShardPlacementRow(shardId, groupId);
 		}
 
 		/* delete the row from pg_dist_shard */

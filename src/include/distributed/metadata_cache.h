@@ -91,7 +91,7 @@ extern Oid DistColocationConfigurationIndexId(void);
 extern Oid DistColocationColocationidIndexId(void);
 extern Oid DistPartitionRelationId(void);
 extern Oid DistShardRelationId(void);
-extern Oid DistShardPlacementRelationId(void);
+extern Oid DistPlacementRelationId(void);
 extern Oid DistNodeRelationId(void);
 extern Oid DistLocalGroupIdRelationId(void);
 
@@ -100,11 +100,11 @@ extern Oid DistPartitionLogicalRelidIndexId(void);
 extern Oid DistPartitionColocationidIndexId(void);
 extern Oid DistShardLogicalRelidIndexId(void);
 extern Oid DistShardShardidIndexId(void);
-extern Oid DistShardPlacementShardidIndexId(void);
-extern Oid DistShardPlacementPlacementidIndexId(void);
+extern Oid DistPlacementShardidIndexId(void);
+extern Oid DistPlacementPlacementidIndexId(void);
 extern Oid DistTransactionRelationId(void);
 extern Oid DistTransactionGroupIndexId(void);
-extern Oid DistShardPlacementNodeidIndexId(void);
+extern Oid DistPlacementGroupidIndexId(void);
 
 /* function oids */
 extern Oid CitusExtraDataContainerFuncId(void);
