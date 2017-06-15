@@ -471,7 +471,7 @@ DROP TABLE mx_table_with_sequence;
 -- owner
 CREATE TABLE pg_dist_shard_placement_temp AS SELECT * FROM pg_dist_shard_placement;
 CREATE TABLE pg_dist_partition_temp AS SELECT * FROM pg_dist_partition;
-DELETE FROM pg_dist_shard_placement;
+DELETE FROM pg_dist_placement;
 DELETE FROM pg_dist_partition;
 SELECT master_remove_node('localhost', :worker_2_port);
 

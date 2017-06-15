@@ -143,7 +143,7 @@ SELECT shardmaxvalue::integer - shardminvalue::integer AS shard_size
 	ORDER BY shardminvalue::integer ASC;
 
 -- cleanup foreign table, related shards and shard placements
-DELETE FROM pg_dist_shard_placement
+DELETE FROM pg_dist_placement
 	WHERE shardid IN (SELECT shardid FROM pg_dist_shard
 					   WHERE logicalrelid = 'foreign_table_to_distribute'::regclass);
 	

@@ -10,8 +10,11 @@ ALTER SEQUENCE pg_catalog.pg_dist_groupid_seq RESTART 1380000;
 ALTER SEQUENCE pg_catalog.pg_dist_node_nodeid_seq RESTART 1380000;
 
 -- create copy of pg_dist_shard_placement to reload after the test
-CREATE TABLE tmp_shard_placement AS SELECT * FROM pg_dist_shard_placement WHERE nodeport = :worker_2_port;
-DELETE FROM pg_dist_shard_placement WHERE nodeport = :worker_2_port;
+CREATE TABLE tmp_placement AS
+  SELECT * FROM pg_dist_placement
+  WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
+DELETE FROM pg_dist_placement
+  WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
 
 -- make worker 1 receive metadata changes
 SELECT start_metadata_sync_to_node('localhost', :worker_1_port);
@@ -584,6 +587,6 @@ DROP SCHEMA remove_node_reference_table_schema CASCADE;
 
 SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
 
--- reload pg_dist_shard_placement table
-INSERT INTO pg_dist_shard_placement (SELECT * FROM tmp_shard_placement);
-DROP TABLE tmp_shard_placement;
+-- reload pg_dist_placement table
+INSERT INTO pg_dist_placement (SELECT * FROM tmp_placement);
+DROP TABLE tmp_placement;

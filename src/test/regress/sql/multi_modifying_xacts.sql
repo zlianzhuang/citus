@@ -127,11 +127,10 @@ ABORT;
 -- then check that SELECT going to new node still is fine
 BEGIN;
 
-UPDATE pg_dist_shard_placement AS sp SET shardstate = 3
+UPDATE pg_dist_placement AS sp SET shardstate = 3
 FROM   pg_dist_shard AS s
 WHERE  sp.shardid = s.shardid
-AND    sp.nodename = 'localhost'
-AND    sp.nodeport = :worker_1_port
+AND    sp.groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port)
 AND    s.logicalrelid = 'researchers'::regclass;
 
 INSERT INTO labs VALUES (6, 'Bell Labs');
@@ -386,7 +385,7 @@ AND    s.logicalrelid = 'objects'::regclass;
 DELETE FROM objects;
 
 -- mark shards as healthy again; delete all data
-UPDATE pg_dist_shard_placement AS sp SET shardstate = 1
+UPDATE pg_dist_placement AS sp SET shardstate = 1
 FROM   pg_dist_shard AS s
 WHERE  sp.shardid = s.shardid
 AND    s.logicalrelid = 'objects'::regclass;
@@ -466,7 +465,7 @@ AND    s.logicalrelid = 'objects'::regclass;
 DELETE FROM objects;
 
 -- mark shards as healthy again; delete all data
-UPDATE pg_dist_shard_placement AS sp SET shardstate = 1
+UPDATE pg_dist_placement AS sp SET shardstate = 1
 FROM   pg_dist_shard AS s
 WHERE  sp.shardid = s.shardid
 AND    s.logicalrelid = 'objects'::regclass;

@@ -45,7 +45,7 @@ ALTER TABLE pg_catalog.pg_dist_node ADD CONSTRAINT pg_dist_node_groupid_unique
 
 DROP TABLE pg_dist_shard_placement;
 CREATE VIEW citus.pg_dist_shard_placement AS
-SELECT shardid, shardstate, shardlength, placementid, nodename, nodeport
+SELECT shardid, shardstate, shardlength, nodename, nodeport, placementid
 -- assumes there's only one node per group
 FROM pg_dist_placement placement INNER JOIN pg_dist_node node ON (
   placement.groupid = node.groupid

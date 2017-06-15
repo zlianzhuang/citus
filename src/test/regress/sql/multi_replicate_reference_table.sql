@@ -11,8 +11,11 @@ ALTER SEQUENCE pg_catalog.pg_dist_node_nodeid_seq RESTART 1370000;
 
 
 -- remove a node for testing purposes
-CREATE TABLE tmp_shard_placement AS SELECT * FROM pg_dist_shard_placement WHERE nodeport = :worker_2_port;
-DELETE FROM pg_dist_shard_placement WHERE nodeport = :worker_2_port;
+CREATE TABLE tmp_placement AS
+  SELECT * FROM pg_dist_placement
+  WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
+DELETE FROM pg_dist_placement
+  WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
 SELECT master_remove_node('localhost', :worker_2_port);
 
 
@@ -43,7 +46,7 @@ SELECT COUNT(*) FROM pg_dist_node WHERE nodeport = :worker_2_port;
 
 CREATE TABLE replicate_reference_table_unhealthy(column1 int);
 SELECT create_reference_table('replicate_reference_table_unhealthy');
-UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 1370000;
+UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 1370000;
 
 SELECT master_add_node('localhost', :worker_2_port);
 
@@ -461,8 +464,8 @@ SELECT master_add_node('localhost', :worker_2_port);
 DROP TABLE initially_not_replicated_reference_table;
 
 -- reload pg_dist_shard_placement table
-INSERT INTO pg_dist_shard_placement (SELECT * FROM tmp_shard_placement);
-DROP TABLE tmp_shard_placement;
+INSERT INTO pg_dist_placement (SELECT * FROM tmp_placement);
+DROP TABLE tmp_placement;
 
 RESET citus.shard_replication_factor;
 RESET citus.replication_model;

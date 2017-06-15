@@ -212,8 +212,9 @@ CREATE TABLE check_placements (key int);
 SELECT master_create_distributed_table('check_placements', 'key', 'hash');
 SELECT master_create_worker_shards('check_placements', 5, 2);
 SELECT * FROM run_command_on_placements('check_placements', 'select 1');
-UPDATE pg_dist_shard_placement SET shardstate = 3
-	WHERE shardid % 2 = 0 AND nodeport = :worker_1_port;
+UPDATE pg_dist_placement SET shardstate = 3
+	WHERE shardid % 2 = 0
+	AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
 SELECT * FROM run_command_on_placements('check_placements', 'select 1');
 DROP TABLE check_placements CASCADE;
 
@@ -237,19 +238,19 @@ SELECT master_create_worker_shards('second_table', 5, 2);
 SELECT * FROM run_command_on_colocated_placements('check_colocated', 'second_table',
 												  'select 1');
 -- when a placement is invalid considers the tables to not be colocated
-UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = (
+UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = (
 		SELECT shardid FROM pg_dist_shard
-		WHERE nodeport = :worker_1_port AND logicalrelid = 'second_table'::regclass
+		WHERE logicalrelid = 'second_table'::regclass
 		ORDER BY 1 ASC LIMIT 1
-);
+) AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
 SELECT * FROM run_command_on_colocated_placements('check_colocated', 'second_table',
 												  'select 1');
 -- when matching placement is also invalid, considers the tables to be colocated
-UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = (
+UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = (
 		SELECT shardid FROM pg_dist_shard
-		WHERE nodeport = :worker_1_port AND logicalrelid = 'check_colocated'::regclass
+		WHERE logicalrelid = 'check_colocated'::regclass
 		ORDER BY 1 ASC LIMIT 1
-);
+) AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
 SELECT * FROM run_command_on_colocated_placements('check_colocated', 'second_table',
 												  'select 1');
 DROP TABLE check_colocated CASCADE;
@@ -260,7 +261,7 @@ CREATE TABLE check_shards (key int);
 SELECT master_create_distributed_table('check_shards', 'key', 'hash');
 SELECT master_create_worker_shards('check_shards', 5, 2);
 SELECT * FROM run_command_on_shards('check_shards', 'select 1');
-UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid % 2 = 0;
+UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid % 2 = 0;
 SELECT * FROM run_command_on_shards('check_shards', 'select 1');
 DROP TABLE check_shards CASCADE;
 
