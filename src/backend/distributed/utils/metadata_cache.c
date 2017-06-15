@@ -1859,7 +1859,7 @@ master_dist_shard_cache_invalidate(PG_FUNCTION_ARGS)
 
 
 /*
- * master_dist_placmeent_cache_invalidate is a trigger function that performs
+ * master_dist_placement_cache_invalidate is a trigger function that performs
  * relcache invalidations when the contents of pg_dist_placement are
  * changed on the SQL level.
  *
