@@ -77,7 +77,8 @@ extern void CopyShardInterval(ShardInterval *srcInterval, ShardInterval *destInt
 extern void CopyShardPlacement(ShardPlacement *srcPlacement,
 							   ShardPlacement *destPlacement);
 extern uint64 ShardLength(uint64 shardId);
-extern bool NodeHasActiveShardPlacements(char *nodeName, int32 nodePort);
+extern bool NodeHasShardPlacements(char *nodeName, int32 nodePort,
+								   bool onlyLookForActivePlacements);
 extern List * FinalizedShardPlacementList(uint64 shardId);
 extern ShardPlacement * FinalizedShardPlacement(uint64 shardId, bool missingOk);
 extern List * BuildShardPlacementList(ShardInterval *shardInterval);

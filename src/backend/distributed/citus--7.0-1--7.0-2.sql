@@ -32,7 +32,7 @@ FROM pg_dist_shard_placement placement LEFT JOIN pg_dist_node node ON (
   placement.nodename = node.nodename AND placement.nodeport = node.nodeport
 );
 
-DROP TRIGGER dist_placement_cache_invalidate;
+DROP TRIGGER dist_placement_cache_invalidate ON pg_catalog.pg_dist_shard_placement;
 CREATE TRIGGER dist_placement_cache_invalidate
     AFTER INSERT OR UPDATE OR DELETE
     ON pg_catalog.pg_dist_placement

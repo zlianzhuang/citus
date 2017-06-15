@@ -53,22 +53,24 @@ SELECT master_disable_node('localhost', :worker_2_port);
 SELECT master_get_active_worker_nodes();
 
 -- restore the node for next tests
-SELECT master_add_node('localhost', :worker_2_port);
+SELECT master_activate_node('localhost', :worker_2_port);
 
 -- try to remove a node with active placements and see that node removal is failed
 SELECT master_remove_node('localhost', :worker_2_port); 
 
 -- mark all placements in the candidate node as inactive
-UPDATE pg_dist_shard_placement SET shardstate=3 WHERE nodeport=:worker_2_port;
+SELECT groupid AS worker_2_group FROM pg_dist_node WHERE nodeport=:worker_2_port \gset
+UPDATE pg_dist_placement SET shardstate=3 WHERE groupid=:worker_2_group;
 SELECT shardid, shardstate, nodename, nodeport FROM pg_dist_shard_placement WHERE nodeport=:worker_2_port;
 
--- try to remove a node with only inactive placements and see that node is removed
+-- try to remove a node with only inactive placements and see that removal still fails
 SELECT master_remove_node('localhost', :worker_2_port); 
 SELECT master_get_active_worker_nodes();
 
 -- clean-up
 SELECT master_add_node('localhost', :worker_2_port);
-UPDATE pg_dist_shard_placement SET shardstate=1 WHERE nodeport=:worker_2_port;
+UPDATE pg_dist_placement SET shardstate=1 WHERE groupid=:worker_2_group;
+
 DROP TABLE cluster_management_test;
 
 -- check that adding/removing nodes are propagated to nodes with hasmetadata=true
@@ -155,7 +157,7 @@ DROP TABLE temp;
 \c - - - :worker_1_port
 DELETE FROM pg_dist_partition;
 DELETE FROM pg_dist_shard;
-DELETE FROM pg_dist_shard_placement;
+DELETE FROM pg_dist_placement;
 DELETE FROM pg_dist_node;
 \c - - - :master_port
 SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);

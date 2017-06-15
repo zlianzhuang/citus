@@ -575,13 +575,13 @@ ShardLength(uint64 shardId)
 
 
 /*
- * NodeHasActiveShardPlacements returns whether any active shards are placed on the group
+ * NodeHasShardPlacements returns whether any active shards are placed on the group
  * this node is a part of.
  */
 bool
-NodeHasActiveShardPlacements(char *nodeName, int32 nodePort)
+NodeHasShardPlacements(char *nodeName, int32 nodePort, bool onlyConsiderActivePlacements)
 {
-	const int scanKeyCount = 2;
+	const int scanKeyCount = (onlyConsiderActivePlacements ? 2 : 1);
 	const bool indexOK = false;
 
 	bool hasFinalizedPlacements = false;
@@ -597,8 +597,11 @@ NodeHasActiveShardPlacements(char *nodeName, int32 nodePort)
 
 	ScanKeyInit(&scanKey[0], Anum_pg_dist_placement_groupid,
 				BTEqualStrategyNumber, F_INT4EQ, UInt32GetDatum(groupId));
-	ScanKeyInit(&scanKey[1], Anum_pg_dist_placement_shardstate,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(FILE_FINALIZED));
+	if (onlyConsiderActivePlacements)
+	{
+		ScanKeyInit(&scanKey[1], Anum_pg_dist_placement_shardstate,
+					BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(FILE_FINALIZED));
+	}
 
 	scanDescriptor = systable_beginscan(pgPlacement,
 										DistPlacementGroupidIndexId(), indexOK,
@@ -704,6 +707,12 @@ BuildShardPlacementList(ShardInterval *shardInterval)
 		TupleDesc tupleDescriptor = RelationGetDescr(pgPlacement);
 
 		ShardPlacement *placement = TupleToShardPlacement(tupleDescriptor, heapTuple);
+
+		uint32 groupId = placement->groupId;
+		WorkerNode *worker = NodeForGroup(groupId);
+		placement->nodeName = worker->workerName;
+		placement->nodePort = worker->workerPort;
+
 		shardPlacementList = lappend(shardPlacementList, placement);
 
 		heapTuple = systable_getnext(scanDescriptor);
