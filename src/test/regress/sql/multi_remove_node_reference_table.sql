@@ -9,12 +9,11 @@ ALTER SEQUENCE pg_catalog.pg_dist_colocationid_seq RESTART 1380000;
 ALTER SEQUENCE pg_catalog.pg_dist_groupid_seq RESTART 1380000;
 ALTER SEQUENCE pg_catalog.pg_dist_node_nodeid_seq RESTART 1380000;
 
--- create copy of pg_dist_shard_placement to reload after the test
+-- create copy of pg_dist_placement to reload after the test
+SELECT groupid AS old_worker_2_group FROM pg_dist_node WHERE nodeport = :worker_2_port \gset
 CREATE TABLE tmp_placement AS
-  SELECT * FROM pg_dist_placement
-  WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
-DELETE FROM pg_dist_placement
-  WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
+  SELECT * FROM pg_dist_placement WHERE groupid = :old_worker_2_group;
+DELETE FROM pg_dist_placement WHERE groupid = :old_worker_2_group;
 
 -- make worker 1 receive metadata changes
 SELECT start_metadata_sync_to_node('localhost', :worker_1_port);
@@ -590,3 +589,6 @@ SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
 -- reload pg_dist_placement table
 INSERT INTO pg_dist_placement (SELECT * FROM tmp_placement);
 DROP TABLE tmp_placement;
+UPDATE pg_dist_placement
+  SET groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port)
+  WHERE groupid = :old_worker_2_group;

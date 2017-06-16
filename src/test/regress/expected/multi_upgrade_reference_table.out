@@ -74,7 +74,7 @@ SELECT create_distributed_table('upgrade_reference_table_unhealthy', 'column1');
 (1 row)
 
 UPDATE pg_dist_partition SET repmodel='c' WHERE logicalrelid='upgrade_reference_table_unhealthy'::regclass;
-UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 1360006;
+UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 1360006;
 SELECT upgrade_to_reference_table('upgrade_reference_table_unhealthy');
 ERROR:  could not find any healthy placement for shard 1360006
 DROP TABLE upgrade_reference_table_unhealthy;
@@ -344,7 +344,8 @@ SELECT create_distributed_table('upgrade_reference_table_one_unhealthy', 'column
  
 (1 row)
 
-UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 1360010 AND nodeport = :worker_1_port;
+UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 1360010
+  AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
 -- situation before upgrade_reference_table
 SELECT
     partmethod, (partkey IS NULL) as partkeyisnull, colocationid, repmodel
@@ -924,8 +925,8 @@ SELECT create_distributed_table('upgrade_reference_table_mx', 'column1');
  
 (1 row)
 
-UPDATE pg_dist_shard_placement SET shardstate = 3 
-WHERE nodeport = :worker_2_port AND 
+UPDATE pg_dist_placement SET shardstate = 3 
+WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port) AND 
 	shardid IN (SELECT shardid FROM pg_dist_shard WHERE logicalrelid='upgrade_reference_table_mx'::regclass);
 	
 SELECT start_metadata_sync_to_node('localhost', :worker_1_port);

@@ -11,11 +11,11 @@ ALTER SEQUENCE pg_catalog.pg_dist_node_nodeid_seq RESTART 1370000;
 
 
 -- remove a node for testing purposes
+SELECT groupid AS old_worker_2_group FROM pg_dist_node WHERE nodeport = :worker_2_port \gset
 CREATE TABLE tmp_placement AS
-  SELECT * FROM pg_dist_placement
-  WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
+  SELECT * FROM pg_dist_placement WHERE groupid = :old_worker_2_group;
 DELETE FROM pg_dist_placement
-  WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
+  WHERE groupid = :old_worker_2_group;
 SELECT master_remove_node('localhost', :worker_2_port);
 
 
@@ -463,9 +463,12 @@ SELECT master_add_node('localhost', :worker_2_port);
 -- drop unnecassary tables
 DROP TABLE initially_not_replicated_reference_table;
 
--- reload pg_dist_shard_placement table
+-- reload pg_dist_placement table
 INSERT INTO pg_dist_placement (SELECT * FROM tmp_placement);
 DROP TABLE tmp_placement;
+UPDATE pg_dist_placement
+  SET groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port)
+  WHERE groupid = :old_worker_2_group;
 
 RESET citus.shard_replication_factor;
 RESET citus.replication_model;

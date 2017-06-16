@@ -241,7 +241,7 @@ GroupForNode(char *nodeName, int nodePort)
 
 	if (workerNode == NULL)
 	{
-		ereport(ERROR, (errmsg("inconsistent metadata, node at \"%s:%u\" does not exist", nodeName, nodePort)));
+		ereport(ERROR, (errmsg("node at \"%s:%u\" does not exist", nodeName, nodePort)));
 	}
 
 	return workerNode->groupId;
@@ -529,6 +529,15 @@ RemoveNodeFromCluster(char *nodeName, int32 nodePort)
 
 	DeleteAllReferenceTablePlacementsFromNode(nodeName, nodePort);
 
+	hasAnyShardPlacements = NodeHasShardPlacements(nodeName, nodePort,
+												   onlyConsiderActivePlacements);
+	if (hasAnyShardPlacements)
+	{
+		ereport(ERROR, (errmsg("you cannot remove a node which has shard placements")));
+	}
+
+	DeleteNodeRow(nodeName, nodePort);
+
 	/*
 	 * After deleting reference tables placements, we will update replication factor
 	 * column for colocation group of reference tables so that replication factor will
@@ -545,15 +554,6 @@ RemoveNodeFromCluster(char *nodeName, int32 nodePort)
 
 		UpdateColocationGroupReplicationFactor(referenceTableColocationId, workerCount);
 	}
-
-	hasAnyShardPlacements = NodeHasShardPlacements(nodeName, nodePort,
-												   onlyConsiderActivePlacements);
-	if (hasAnyShardPlacements)
-	{
-		ereport(ERROR, (errmsg("you cannot remove a node which has shard placements")));
-	}
-
-	DeleteNodeRow(nodeName, nodePort);
 
 	nodeDeleteCommand = NodeDeleteCommand(deletedNodeId);
 

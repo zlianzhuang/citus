@@ -421,7 +421,7 @@ DeleteAllReferenceTablePlacementsFromNode(char *workerName, uint32 workerPort)
 		placementId = DeleteShardPlacementRow(shardId, workerGroup);
 
 		appendStringInfo(deletePlacementCommand,
-						 "DELETE FROM pg_dist_shard_placement WHERE placementid=%lu",
+						 "DELETE FROM pg_dist_placement WHERE placementid=%lu",
 						 placementId);
 		SendCommandToWorkers(WORKERS_WITH_METADATA, deletePlacementCommand->data);
 	}
