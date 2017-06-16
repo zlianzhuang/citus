@@ -285,6 +285,7 @@ ReplicateShardToNode(ShardInterval *shardInterval, char *nodeName, int nodePort)
 	if (targetPlacement == NULL || targetPlacement->shardState != FILE_FINALIZED)
 	{
 		uint64 placementId = 0;
+		uint32 groupId = 0;
 
 		ereport(NOTICE, (errmsg("Replicating reference table \"%s\" to the node %s:%d",
 								get_rel_name(shardInterval->relationId), nodeName,
@@ -294,13 +295,14 @@ ReplicateShardToNode(ShardInterval *shardInterval, char *nodeName, int nodePort)
 												   ddlCommandList);
 		if (targetPlacement == NULL)
 		{
-			uint32 groupId = GroupForNode(nodeName, nodePort);
+			groupId = GroupForNode(nodeName, nodePort);
 
 			placementId = GetNextPlacementId();
 			InsertShardPlacementRow(shardId, placementId, FILE_FINALIZED, 0, groupId);
 		}
 		else
 		{
+			groupId = targetPlacement->groupId;
 			placementId = targetPlacement->placementId;
 			UpdateShardPlacementState(placementId, FILE_FINALIZED);
 		}
@@ -316,7 +318,7 @@ ReplicateShardToNode(ShardInterval *shardInterval, char *nodeName, int nodePort)
 		{
 			char *placementCommand = PlacementUpsertCommand(shardId, placementId,
 															FILE_FINALIZED, 0,
-															nodeName, nodePort);
+															groupId);
 
 			SendCommandToWorkers(WORKERS_WITH_METADATA, placementCommand);
 		}
@@ -382,7 +384,7 @@ CreateReferenceTableColocationId()
 
 /*
  * DeleteAllReferenceTablePlacementsFromNode function iterates over list of reference
- * tables and deletes all reference table placements from pg_dist_shard_placement table
+ * tables and deletes all reference table placements from pg_dist_placement table
  * for given worker node. However, it does not modify replication factor of the colocation
  * group of reference tables. It is caller's responsibility to do that if it is necessary.
  */

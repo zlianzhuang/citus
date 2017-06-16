@@ -710,6 +710,14 @@ BuildShardPlacementList(ShardInterval *shardInterval)
 
 		uint32 groupId = placement->groupId;
 		WorkerNode *worker = NodeForGroup(groupId);
+
+		if (worker == NULL)
+		{
+			ereport(ERROR, (errmsg("the metadata is inconsistent"),
+							errdetail("there is a placement in group %u but"
+									  " there are no nodes in that group", groupId)));
+		}
+
 		placement->nodeName = worker->workerName;
 		placement->nodePort = worker->workerPort;
 

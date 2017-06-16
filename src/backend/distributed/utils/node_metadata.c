@@ -241,7 +241,7 @@ GroupForNode(char *nodeName, int nodePort)
 
 	if (workerNode == NULL)
 	{
-		ereport(ERROR, (errmsg("node at \"%s:%u\" does not exist", nodeName, nodePort)));
+		ereport(ERROR, (errmsg("inconsistent metadata, node at \"%s:%u\" does not exist", nodeName, nodePort)));
 	}
 
 	return workerNode->groupId;
@@ -272,7 +272,7 @@ NodeForGroup(uint32 groupId)
 		}
 	}
 
-	ereport(ERROR, (errmsg("there are no nodes in group %u", groupId)));
+	return NULL;
 }
 
 
@@ -503,7 +503,7 @@ ReadWorkerNodes()
  * The call to the master_remove_node should be done by the super user. If there are
  * active shard placements on the node; the function errors out.
  * This function also deletes all reference table placements belong to the given node from
- * pg_dist_shard_placement, but it does not drop actual placement at the node. It also
+ * pg_dist_placement, but it does not drop actual placement at the node. It also
  * modifies replication factor of the colocation group of reference tables, so that
  * replication factor will be equal to worker count.
  */

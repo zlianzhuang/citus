@@ -17,13 +17,13 @@ ALTER TABLE citus.pg_dist_placement SET SCHEMA pg_catalog;
 GRANT SELECT ON pg_catalog.pg_dist_placement TO public;
 
 CREATE INDEX pg_dist_placement_groupid_index
-  ON pg_dist_placement (groupid);
+  ON pg_dist_placement USING btree(groupid);
 
 CREATE INDEX pg_dist_placement_shardid_index
-  ON pg_dist_placement (shardid);
+  ON pg_dist_placement USING btree(shardid);
 
-CREATE INDEX pg_dist_placement_placementid_index
-  ON pg_dist_placement (placementid);
+CREATE UNIQUE INDEX pg_dist_placement_placementid_index
+  ON pg_dist_placement USING btree(placementid);
 
 INSERT INTO pg_catalog.pg_dist_placement
 SELECT placementid, shardid, shardstate, shardlength, node.groupid
