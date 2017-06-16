@@ -69,6 +69,9 @@ INSERT INTO pg_dist_placement (groupid, shardid, shardstate, shardlength)
 
 SELECT master_copy_shard_placement(:newshardid, 'localhost', :worker_1_port, 'localhost', :worker_2_port);
 
+DELETE FROM pg_dist_placement
+  WHERE groupid = :worker_2_group AND shardid = :newshardid AND shardstate = 1;
+
 -- also try to copy from an inactive placement
 SELECT master_copy_shard_placement(:newshardid, 'localhost', :worker_2_port, 'localhost', :worker_1_port);
 
