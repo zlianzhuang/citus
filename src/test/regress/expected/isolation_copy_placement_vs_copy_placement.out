@@ -8,7 +8,8 @@ step s2-load-cache:
 	COPY test_hash_table FROM PROGRAM 'echo "1,1\n2,2\n3,3\n4,4\n5,5"' WITH CSV;
 
 step s2-set-placement-inactive: 
-	UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid IN (SELECT * FROM selected_shard_for_test_table) AND nodeport = 57638;
+	UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid IN (SELECT * FROM selected_shard_for_test_table)
+		AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 
 step s2-begin: 
 	BEGIN;
@@ -30,7 +31,8 @@ error in steps s2-commit s1-repair-placement: ERROR:  target placement must be i
 
 starting permutation: s2-set-placement-inactive s2-begin s2-repair-placement s1-repair-placement s2-commit
 step s2-set-placement-inactive: 
-	UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid IN (SELECT * FROM selected_shard_for_test_table) AND nodeport = 57638;
+	UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid IN (SELECT * FROM selected_shard_for_test_table)
+		AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 
 step s2-begin: 
 	BEGIN;

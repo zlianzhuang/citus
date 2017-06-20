@@ -5,7 +5,9 @@ master_create_worker_shards
 
                
 step s2-invalidate-57637: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57637;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57637);
 
 step s1-begin: 
     BEGIN;
@@ -32,7 +34,9 @@ step s1-insertone:
     INSERT INTO test_table VALUES(1, 1);
 
 step s2-invalidate-57637: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57637;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57637);
 
 step s1-begin: 
     BEGIN;
@@ -56,7 +60,9 @@ master_create_worker_shards
 
                
 step s2-invalidate-57637: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57637;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57637);
 
 step s2-begin: 
     BEGIN;
@@ -75,7 +81,9 @@ step s2-commit:
 
 step s1-insertone: <... completed>
 step s2-invalidate-57638: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57638;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 
 step s1-display: 
     SELECT * FROM test_table WHERE test_id = 1;
@@ -84,10 +92,14 @@ test_id        data
 
 1              1              
 step s2-invalidate-57637: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57637;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57637);
 
 step s2-revalidate-57638: 
-    UPDATE pg_dist_shard_placement SET shardstate = '1' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57638;
+    UPDATE pg_dist_placement SET shardstate = '1'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 
 step s1-display: 
     SELECT * FROM test_table WHERE test_id = 1;
@@ -101,7 +113,9 @@ master_create_worker_shards
 
                
 step s2-invalidate-57637: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57637;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57637);
 
 step s1-prepared-insertone: 
     EXECUTE insertone;
@@ -124,7 +138,9 @@ step s2-commit:
 step s1-prepared-insertone: <... completed>
 error in steps s2-commit s1-prepared-insertone: ERROR:  prepared modifications cannot be executed on a shard while it is being copied
 step s2-invalidate-57638: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57638;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 
 step s1-display: 
     SELECT * FROM test_table WHERE test_id = 1;
@@ -133,10 +149,14 @@ test_id        data
 
 1              1              
 step s2-invalidate-57637: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57637;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57637);
 
 step s2-revalidate-57638: 
-    UPDATE pg_dist_shard_placement SET shardstate = '1' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57638;
+    UPDATE pg_dist_placement SET shardstate = '1'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 
 step s1-display: 
     SELECT * FROM test_table WHERE test_id = 1;
@@ -150,7 +170,9 @@ master_create_worker_shards
 
                
 step s2-invalidate-57637: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57637;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57637);
 
 step s1-insertone: 
     INSERT INTO test_table VALUES(1, 1);
@@ -176,7 +198,9 @@ step s2-commit:
 step s1-prepared-insertall: <... completed>
 error in steps s2-commit s1-prepared-insertall: ERROR:  prepared modifications cannot be executed on a shard while it is being copied
 step s2-invalidate-57638: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57638;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 
 step s1-display: 
     SELECT * FROM test_table WHERE test_id = 1;
@@ -186,10 +210,14 @@ test_id        data
 1              1              
 1              2              
 step s2-invalidate-57637: 
-    UPDATE pg_dist_shard_placement SET shardstate = '3' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57637;
+    UPDATE pg_dist_placement SET shardstate = '3'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57637);
 
 step s2-revalidate-57638: 
-    UPDATE pg_dist_shard_placement SET shardstate = '1' WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass) AND nodeport = 57638;
+    UPDATE pg_dist_placement SET shardstate = '1'
+      WHERE shardid = (SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
+      AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 
 step s1-display: 
     SELECT * FROM test_table WHERE test_id = 1;

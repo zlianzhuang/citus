@@ -40,7 +40,8 @@ step "s2-begin"
 
 step "s2-set-placement-inactive"
 {
-	UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid IN (SELECT * FROM selected_shard_for_test_table) AND nodeport = 57638;
+	UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid IN (SELECT * FROM selected_shard_for_test_table)
+		AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = 57638);
 }
 
 step "s2-repair-placement"
