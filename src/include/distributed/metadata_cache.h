@@ -60,7 +60,7 @@ typedef struct
 	FmgrInfo *shardIntervalCompareFunction;
 	FmgrInfo *hashFunction; /* NULL if table is not distributed by hash */
 
-	/* pg_dist_shard_placement metadata */
+	/* pg_dist_placement metadata */
 	ShardPlacement **arrayOfPlacementArrays;
 	int *arrayOfPlacementArrayLengths;
 } DistTableCacheEntry;

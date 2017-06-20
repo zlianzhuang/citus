@@ -149,8 +149,8 @@ master_add_inactive_node(PG_FUNCTION_ARGS)
  * The call to the master_remove_node should be done by the super user and the specified
  * node should not have any active placements.
  * This function also deletes all reference table placements belong to the given node from
- * pg_dist_shard_placement, but it does not drop actual placement at the node. In the case
- * of re-adding the node, master_add_node first drops and re-creates the reference tables.
+ * pg_dist_placement, but it does not drop actual placement at the node. In the case of
+ * re-adding the node, master_add_node first drops and re-creates the reference tables.
  */
 Datum
 master_remove_node(PG_FUNCTION_ARGS)
@@ -168,14 +168,16 @@ master_remove_node(PG_FUNCTION_ARGS)
 
 
 /*
- * master_disable_node function sets isactive value of the provided node as inactive
- * at master node and all nodes with metadata regardless of the node having an
- * active shard placement.
+ * master_disable_node function sets isactive value of the provided node as inactive at
+ * master node and all nodes with metadata regardless of the node having an active shard
+ * placement.
+ *
  * The call to the master_disable_node must be done by the super user.
- * This function also deletes all reference table placements belong to the given
- * node from pg_dist_shard_placement, but it does not drop actual placement at
- * the node. In the case of re-activating the node, master_add_node first drops
- * and re-creates the reference tables.
+ *
+ * This function also deletes all reference table placements belong to the given node
+ * from pg_dist_placement, but it does not drop actual placement at the node. In the case
+ * of re-activating the node, master_add_node first drops and re-creates the reference
+ * tables.
  */
 Datum
 master_disable_node(PG_FUNCTION_ARGS)

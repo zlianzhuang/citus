@@ -32,7 +32,7 @@ PG_FUNCTION_INFO_V1(worker_drop_distributed_table);
 /*
  * worker_drop_distributed_table drops the distributed table with the given oid,
  * then, removes the associated rows from pg_dist_partition, pg_dist_shard and
- * pg_dist_shard_placement. The function also drops the server for foreign tables.
+ * pg_dist_placement. The function also drops the server for foreign tables.
  *
  * Note that drop fails if any dependent objects are present for any of the
  * distributed tables. Also, shard placements of the distributed tables are

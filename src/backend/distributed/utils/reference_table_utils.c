@@ -211,7 +211,7 @@ ReplicateSingleShardTableToAllWorkers(Oid relationId)
 	/*
 	 * After the table has been officially marked as a reference table, we need to create
 	 * the reference table itself and insert its pg_dist_partition, pg_dist_shard and
-	 * existing pg_dist_shard_placement rows.
+	 * existing pg_dist_placement rows.
 	 */
 	CreateTableMetadataOnWorkers(relationId);
 }
@@ -280,7 +280,7 @@ ReplicateShardToNode(ShardInterval *shardInterval, char *nodeName, int nodePort)
 	 * placements always have shardState = FILE_FINALIZED, in case of an upgrade of
 	 * a non-reference table to reference table, unhealty placements may exist. In
 	 * this case, we repair the shard placement and update its state in
-	 * pg_dist_shard_placement table.
+	 * pg_dist_placement table.
 	 */
 	if (targetPlacement == NULL || targetPlacement->shardState != FILE_FINALIZED)
 	{
