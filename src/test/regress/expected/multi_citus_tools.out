@@ -403,9 +403,8 @@ SELECT * FROM run_command_on_placements('check_placements', 'select 1');
  localhost |    57638 | 1240004 | t       | 1
 (10 rows)
 
-UPDATE pg_dist_placement SET shardstate = 3
-	WHERE shardid % 2 = 0
-	AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
+UPDATE pg_dist_shard_placement SET shardstate = 3
+	WHERE shardid % 2 = 0 AND nodeport = :worker_1_port;
 SELECT * FROM run_command_on_placements('check_placements', 'select 1');
  nodename  | nodeport | shardid | success | result 
 -----------+----------+---------+---------+--------
@@ -495,20 +494,20 @@ SELECT * FROM run_command_on_colocated_placements('check_colocated', 'second_tab
 (10 rows)
 
 -- when a placement is invalid considers the tables to not be colocated
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = (
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = (
 		SELECT shardid FROM pg_dist_shard
-		WHERE logicalrelid = 'second_table'::regclass
+		WHERE nodeport = :worker_1_port AND logicalrelid = 'second_table'::regclass
 		ORDER BY 1 ASC LIMIT 1
-) AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
+);
 SELECT * FROM run_command_on_colocated_placements('check_colocated', 'second_table',
 												  'select 1');
 ERROR:  tables check_colocated and second_table are not co-located
 -- when matching placement is also invalid, considers the tables to be colocated
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = (
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = (
 		SELECT shardid FROM pg_dist_shard
-		WHERE logicalrelid = 'check_colocated'::regclass
+		WHERE nodeport = :worker_1_port AND logicalrelid = 'check_colocated'::regclass
 		ORDER BY 1 ASC LIMIT 1
-) AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
+);
 SELECT * FROM run_command_on_colocated_placements('check_colocated', 'second_table',
 												  'select 1');
  nodename  | nodeport | shardid1 | shardid2 | success | result 
@@ -550,7 +549,7 @@ SELECT * FROM run_command_on_shards('check_shards', 'select 1');
  1240028 | t       | 1
 (5 rows)
 
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid % 2 = 0;
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid % 2 = 0;
 SELECT * FROM run_command_on_shards('check_shards', 'select 1');
 NOTICE:  some shards do  not have active placements
  shardid | success | result 

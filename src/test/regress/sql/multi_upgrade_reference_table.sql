@@ -48,7 +48,7 @@ DROP TABLE upgrade_reference_table_referenced;
 CREATE TABLE upgrade_reference_table_unhealthy(column1 int);
 SELECT create_distributed_table('upgrade_reference_table_unhealthy', 'column1');
 UPDATE pg_dist_partition SET repmodel='c' WHERE logicalrelid='upgrade_reference_table_unhealthy'::regclass;
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 1360006;
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 1360006;
 SELECT upgrade_to_reference_table('upgrade_reference_table_unhealthy');
 DROP TABLE upgrade_reference_table_unhealthy;
 
@@ -225,8 +225,7 @@ DROP TABLE upgrade_reference_table_one_worker;
 SET citus.shard_replication_factor TO 2;
 CREATE TABLE upgrade_reference_table_one_unhealthy(column1 int);
 SELECT create_distributed_table('upgrade_reference_table_one_unhealthy', 'column1');
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 1360010
-  AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 1360010 AND nodeport = :worker_1_port;
 
 -- situation before upgrade_reference_table
 SELECT
@@ -600,8 +599,8 @@ SET citus.shard_replication_factor TO 2;
 RESET citus.replication_model;
 CREATE TABLE upgrade_reference_table_mx(column1 int);
 SELECT create_distributed_table('upgrade_reference_table_mx', 'column1');
-UPDATE pg_dist_placement SET shardstate = 3 
-WHERE groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port) AND 
+UPDATE pg_dist_shard_placement SET shardstate = 3 
+WHERE nodeport = :worker_2_port AND 
 	shardid IN (SELECT shardid FROM pg_dist_shard WHERE logicalrelid='upgrade_reference_table_mx'::regclass);
 	
 SELECT start_metadata_sync_to_node('localhost', :worker_1_port);

@@ -504,19 +504,19 @@ EXECUTE countsome; -- should indicate planning
 EXECUTE countsome; -- no replanning
 
 -- invalidate half of the placements using SQL, should invalidate via trigger
-UPDATE pg_dist_placement SET shardstate = '3'
+UPDATE pg_dist_shard_placement SET shardstate = '3'
 WHERE shardid IN (
         SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
-    AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
+    AND nodeport = :worker_1_port;
 EXECUTE countsome; -- should indicate replanning
 EXECUTE countsome; -- no replanning
 
 -- repair shards, should invalidate via master_metadata_utility.c
 SELECT master_copy_shard_placement(shardid, 'localhost', :worker_2_port, 'localhost', :worker_1_port)
-FROM pg_dist_placement
+FROM pg_dist_shard_placement
 WHERE shardid IN (
         SELECT shardid FROM pg_dist_shard WHERE logicalrelid = 'test_table'::regclass)
-    AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_1_port);
+    AND nodeport = :worker_1_port;
 EXECUTE countsome; -- should indicate replanning
 EXECUTE countsome; -- no replanning
 

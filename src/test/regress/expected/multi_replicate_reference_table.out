@@ -7,11 +7,8 @@ ALTER SEQUENCE pg_catalog.pg_dist_colocationid_seq RESTART 1370000;
 ALTER SEQUENCE pg_catalog.pg_dist_groupid_seq RESTART 1370000;
 ALTER SEQUENCE pg_catalog.pg_dist_node_nodeid_seq RESTART 1370000;
 -- remove a node for testing purposes
-SELECT groupid AS old_worker_2_group FROM pg_dist_node WHERE nodeport = :worker_2_port \gset
-CREATE TABLE tmp_placement AS
-  SELECT * FROM pg_dist_placement WHERE groupid = :old_worker_2_group;
-DELETE FROM pg_dist_placement
-  WHERE groupid = :old_worker_2_group;
+CREATE TABLE tmp_shard_placement AS SELECT * FROM pg_dist_shard_placement WHERE nodeport = :worker_2_port;
+DELETE FROM pg_dist_shard_placement WHERE nodeport = :worker_2_port;
 SELECT master_remove_node('localhost', :worker_2_port);
  master_remove_node 
 --------------------
@@ -71,7 +68,7 @@ SELECT create_reference_table('replicate_reference_table_unhealthy');
  
 (1 row)
 
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 1370000;
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 1370000;
 SELECT master_add_node('localhost', :worker_2_port);
 ERROR:  could not find any healthy placement for shard 1370000
 -- verify node is not added
@@ -718,11 +715,8 @@ SELECT master_add_node('localhost', :worker_2_port);
 
 -- drop unnecassary tables
 DROP TABLE initially_not_replicated_reference_table;
--- reload pg_dist_placement table
-INSERT INTO pg_dist_placement (SELECT * FROM tmp_placement);
-DROP TABLE tmp_placement;
-UPDATE pg_dist_placement
-  SET groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port)
-  WHERE groupid = :old_worker_2_group;
+-- reload pg_dist_shard_placement table
+INSERT INTO pg_dist_shard_placement (SELECT * FROM tmp_shard_placement);
+DROP TABLE tmp_shard_placement;
 RESET citus.shard_replication_factor;
 RESET citus.replication_model;

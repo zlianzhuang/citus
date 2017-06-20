@@ -4,9 +4,9 @@
 -- These tables are created in multi_colocation_utils test
 -- test repair
 -- manually set shardstate as inactive
-UPDATE pg_dist_placement SET shardstate = 3
-  WHERE shardid IN (1300000, 1300004, 1300016, 1300020)
-  AND groupid = (SELECT groupid FROM pg_dist_node WHERE nodeport = :worker_2_port);
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE nodeport = :worker_2_port AND (shardid = 1300000 OR shardid = 1300004);
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE nodeport = :worker_2_port AND shardid = 1300016;
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE nodeport = :worker_2_port AND shardid = 1300020;
 -- test repairing colocated shards
 -- status before shard repair
 SELECT s.shardid, s.logicalrelid::regclass, sp.nodeport, p.colocationid, sp.shardstate
@@ -167,7 +167,7 @@ ORDER BY s.shardid, sp.nodeport;
 
 -- test repair while all placements of one shard in colocation group is unhealthy
 -- manually set shardstate as inactive
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 1300000;
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 1300000;
 -- status before shard repair
 SELECT s.shardid, s.logicalrelid::regclass, sp.nodeport, p.colocationid, sp.shardstate
 FROM 

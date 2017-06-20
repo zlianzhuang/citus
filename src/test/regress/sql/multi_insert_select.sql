@@ -1410,8 +1410,7 @@ INSERT INTO raw_events_first SELECT * FROM raw_events_second WHERE user_id = 5;
 SET client_min_messages TO INFO;
 
 -- if a single shard of the SELECT is unhealty, the query should fail
-SELECT groupid AS worker_1_group FROM pg_dist_node WHERE nodeport = :worker_1_port \gset
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 13300004 AND groupid = :worker_1_group;
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 13300004 AND nodeport = :worker_1_port;
 truncate raw_events_first;
 SET client_min_messages TO DEBUG2;
 
@@ -1427,10 +1426,10 @@ INSERT INTO raw_events_first SELECT * FROM raw_events_second WHERE user_id = 6;
 SET client_min_messages TO INFO;
 
 -- mark the unhealthy placement as healthy again for the next tests
-UPDATE pg_dist_placement SET shardstate = 1 WHERE shardid = 13300004 AND groupid = :worker_1_group;
+UPDATE pg_dist_shard_placement SET shardstate = 1 WHERE shardid = 13300004 AND nodeport = :worker_1_port;
 
--- now we should show that it works if one of the target shard intervals is not healthy
-UPDATE pg_dist_placement SET shardstate = 3 WHERE shardid = 13300000 AND groupid = :worker_1_group;
+-- now that we should show that it works if one of the target shard interval is not healthy
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE shardid = 13300000 AND nodeport = :worker_1_port;
 truncate raw_events_first;
 SET client_min_messages TO DEBUG2;
 

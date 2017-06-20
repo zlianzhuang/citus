@@ -1425,7 +1425,7 @@ SELECT master_get_table_ddl_events('reference_table_ddl');
 -- however, the test could be relevant for other purposes
 SELECT placementid AS a_placement_id FROM pg_dist_shard_placement WHERE shardid = :a_shard_id AND nodeport = :worker_1_port \gset
 SELECT placementid AS b_placement_id FROM pg_dist_shard_placement WHERE shardid = :a_shard_id AND nodeport = :worker_2_port \gset
-UPDATE pg_dist_placement SET shardstate = 3 WHERE placementid = :a_placement_id;
+UPDATE pg_dist_shard_placement SET shardstate = 3 WHERE placementid = :a_placement_id;
 SELECT master_copy_shard_placement(:a_shard_id, 'localhost', :worker_2_port, 'localhost', :worker_1_port);
  master_copy_shard_placement 
 -----------------------------

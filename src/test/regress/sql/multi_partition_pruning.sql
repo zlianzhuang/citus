@@ -46,18 +46,18 @@ INSERT INTO pg_dist_shard (logicalrelid, shardid, shardstorage, shardminvalue, s
 	VALUES('varchar_partitioned_table'::regclass, 100, 't', 'AA1000U2AMO4ZGX', 'AZZXSP27F21T6'),
 		  ('varchar_partitioned_table'::regclass, 101, 't', 'BA1000U2AMO4ZGX', 'BZZXSP27F21T6');
 
-INSERT INTO pg_dist_placement (shardid, shardstate, shardlength, groupid)
-	SELECT 100, 1, 1, groupid
-	FROM pg_dist_placement
-	GROUP BY groupid
-	ORDER BY groupid ASC
+INSERT INTO pg_dist_shard_placement (shardid, shardstate, shardlength, nodename, nodeport)
+	SELECT 100, 1, 1, nodename, nodeport
+	FROM pg_dist_shard_placement
+	GROUP BY nodename, nodeport
+	ORDER BY nodename, nodeport ASC
 	LIMIT 1;
 
-INSERT INTO pg_dist_placement (shardid, shardstate, shardlength, groupid)
-	SELECT 101, 1, 1, groupid
-	FROM pg_dist_placement
-	GROUP BY groupid
-	ORDER BY groupid ASC
+INSERT INTO pg_dist_shard_placement (shardid, shardstate, shardlength, nodename, nodeport)
+	SELECT 101, 1, 1, nodename, nodeport
+	FROM pg_dist_shard_placement
+	GROUP BY nodename, nodeport
+	ORDER BY nodename, nodeport ASC
 	LIMIT 1;
 
 -- Create array partitioned table
@@ -77,18 +77,18 @@ INSERT INTO pg_dist_shard (logicalrelid, shardid, shardstorage, shardminvalue, s
 		  ('array_partitioned_table'::regclass, 103, 't', '{BA1000U2AMO4ZGX, BZZXSP27F21T6}',
 		   '{CA1000U2AMO4ZGX, CZZXSP27F21T6}');
 
-INSERT INTO pg_dist_placement (shardid, shardstate, shardlength, groupid)
-	SELECT 102, 1, 1, groupid
-	FROM pg_dist_placement
-	GROUP BY groupid
-	ORDER BY groupid ASC
+INSERT INTO pg_dist_shard_placement (shardid, shardstate, shardlength, nodename, nodeport)
+	SELECT 102, 1, 1, nodename, nodeport
+	FROM pg_dist_shard_placement
+	GROUP BY nodename, nodeport
+	ORDER BY nodename, nodeport ASC
 	LIMIT 1;
 
-INSERT INTO pg_dist_placement (shardid, shardstate, shardlength, groupid)
-	SELECT 103, 1, 1, groupid
-	FROM pg_dist_placement
-	GROUP BY groupid
-	ORDER BY groupid ASC
+INSERT INTO pg_dist_shard_placement (shardid, shardstate, shardlength, nodename, nodeport)
+	SELECT 103, 1, 1, nodename, nodeport
+	FROM pg_dist_shard_placement
+	GROUP BY nodename, nodeport
+	ORDER BY nodename, nodeport ASC
 	LIMIT 1;
 
 -- Create composite type partitioned table
@@ -113,18 +113,18 @@ INSERT INTO pg_dist_shard (logicalrelid, shardid, shardstorage, shardminvalue, s
 	VALUES('composite_partitioned_table'::regclass, 104, 't', '(a,3,b)', '(b,4,c)'),
 		  ('composite_partitioned_table'::regclass, 105, 't', '(c,5,d)', '(d,6,e)');
 
-INSERT INTO pg_dist_placement (shardid, shardstate, shardlength, groupid)
-	SELECT 104, 1, 1, groupid
-	FROM pg_dist_placement
-	GROUP BY groupid
-	ORDER BY groupid ASC
+INSERT INTO pg_dist_shard_placement (shardid, shardstate, shardlength, nodename, nodeport)
+	SELECT 104, 1, 1, nodename, nodeport
+	FROM pg_dist_shard_placement
+	GROUP BY nodename, nodeport
+	ORDER BY nodename, nodeport ASC
 	LIMIT 1;
 
-INSERT INTO pg_dist_placement (shardid, shardstate, shardlength, groupid)
-	SELECT 105, 1, 1, groupid
-	FROM pg_dist_placement
-	GROUP BY groupid
-	ORDER BY groupid ASC
+INSERT INTO pg_dist_shard_placement (shardid, shardstate, shardlength, nodename, nodeport)
+	SELECT 105, 1, 1, nodename, nodeport
+	FROM pg_dist_shard_placement
+	GROUP BY nodename, nodeport
+	ORDER BY nodename, nodeport ASC
 	LIMIT 1;
 
 -- Verify that shard pruning works. Note that these queries should all
