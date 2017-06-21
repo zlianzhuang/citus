@@ -64,7 +64,7 @@ static ShardPlacement * TupleToShardPlacement(TupleDesc tupleDesc,
 static uint64 DistributedTableSize(Oid relationId, char *sizeQuery);
 static uint64 DistributedTableSizeOnWorker(WorkerNode *workerNode, Oid relationId,
 										   char *sizeQuery);
-static List * ShardIntervalsOnWorkerNode(WorkerNode *workerNode, Oid relationId);
+static List * ShardIntervalsOnWorkerGroup(WorkerNode *workerNode, Oid relationId);
 static StringInfo GenerateSizeQueryOnMultiplePlacements(Oid distributedRelationId,
 														List *shardIntervalList,
 														char *sizeQuery);
@@ -197,7 +197,7 @@ DistributedTableSizeOnWorker(WorkerNode *workerNode, Oid relationId, char *sizeQ
 	int queryResult = 0;
 	List *sizeList = NIL;
 
-	List *shardIntervalsOnNode = ShardIntervalsOnWorkerNode(workerNode, relationId);
+	List *shardIntervalsOnNode = ShardIntervalsOnWorkerGroup(workerNode, relationId);
 
 	tableSizeQuery = GenerateSizeQueryOnMultiplePlacements(relationId,
 														   shardIntervalsOnNode,
@@ -222,19 +222,16 @@ DistributedTableSizeOnWorker(WorkerNode *workerNode, Oid relationId, char *sizeQ
 
 
 /*
- * ShardIntervalsOnNode takes a WorkerNode then compares it with each placement
- * of table. It returns shard intervals of table on that node as a list of shard
- * intervals. Note that, shard intervals returned as elements of the list are
- * not the copies but the pointers.
+ * ShardIntervalsOnWorkerGroup accepts a WorkerNode and returns a list of the shard
+ * intervals of the given table which are placed on the group the node is a part of.
  *
- * DO NOT modify the shard intervals returned by this function.
+ * DO NOT modify the shard intervals returned by this function, they are not copies but
+ * pointers.
  */
 static List *
-ShardIntervalsOnWorkerNode(WorkerNode *workerNode, Oid relationId)
+ShardIntervalsOnWorkerGroup(WorkerNode *workerNode, Oid relationId)
 {
 	DistTableCacheEntry *distTableCacheEntry = DistributedTableCacheEntry(relationId);
-	char *workerNodeName = workerNode->workerName;
-	uint32 workerNodePort = workerNode->workerPort;
 	List *shardIntervalList = NIL;
 	int shardIndex = 0;
 	int shardIntervalArrayLength = distTableCacheEntry->shardIntervalArrayLength;
@@ -250,8 +247,6 @@ ShardIntervalsOnWorkerNode(WorkerNode *workerNode, Oid relationId)
 		for (placementIndex = 0; placementIndex < numberOfPlacements; placementIndex++)
 		{
 			ShardPlacement *placement = &placementArray[placementIndex];
-			char *shardNodeName = placement->nodeName;
-			uint32 shardNodePort = placement->nodePort;
 			uint64 shardId = placement->shardId;
 			bool metadataLock = false;
 
@@ -266,8 +261,7 @@ ShardIntervalsOnWorkerNode(WorkerNode *workerNode, Oid relationId)
 				continue;
 			}
 
-			if (strcmp(shardNodeName, workerNodeName) == 0 &&
-				shardNodePort == workerNodePort)
+			if (placement->groupId == workerNode->groupId)
 			{
 				ShardInterval *shardInterval =
 					distTableCacheEntry->sortedShardIntervalArray[shardIndex];
