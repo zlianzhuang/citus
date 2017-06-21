@@ -407,18 +407,20 @@ DeleteAllReferenceTablePlacementsFromNode(char *workerName, uint32 workerPort)
 	referenceTableList = SortList(referenceTableList, CompareOids);
 	foreach(referenceTableCell, referenceTableList)
 	{
-		Oid referenceTableId = lfirst_oid(referenceTableCell);
-
-		List *shardIntervalList = LoadShardIntervalList(referenceTableId);
-		ShardInterval *shardInterval = (ShardInterval *) linitial(shardIntervalList);
-		uint64 shardId = shardInterval->shardId;
-		uint64 placementId = INVALID_PLACEMENT_ID;
-		StringInfo deletePlacementCommand = makeStringInfo();
 		uint32 workerGroup = GroupForNode(workerName, workerPort);
+
+		Oid referenceTableId = lfirst_oid(referenceTableCell);
+		List *placements = ShardPlacementsForTableOnGroup(referenceTableId, workerGroup);
+		ShardPlacement *placement = (ShardPlacement *) linitial(placements);
+
+		uint64 shardId = placement->shardId;
+		uint64 placementId = placement->placementId;
+
+		StringInfo deletePlacementCommand = makeStringInfo();
 
 		LockShardDistributionMetadata(shardId, ExclusiveLock);
 
-		placementId = DeleteShardPlacementRow(shardId, workerGroup);
+		DeleteShardPlacementRow(placementId);
 
 		appendStringInfo(deletePlacementCommand,
 						 "DELETE FROM pg_dist_placement WHERE placementid=%lu",

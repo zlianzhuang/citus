@@ -221,6 +221,38 @@ DistributedTableSizeOnWorker(WorkerNode *workerNode, Oid relationId, char *sizeQ
 }
 
 
+List *
+ShardPlacementsForTableOnGroup(Oid relationId, uint32 groupId)
+{
+	DistTableCacheEntry *distTableCacheEntry = DistributedTableCacheEntry(relationId);
+	List *resultList = NIL;
+
+	int shardIndex = 0;
+	int shardIntervalArrayLength = distTableCacheEntry->shardIntervalArrayLength;
+
+	for (shardIndex = 0; shardIndex < shardIntervalArrayLength; shardIndex++)
+	{
+		ShardPlacement *placementArray =
+			distTableCacheEntry->arrayOfPlacementArrays[shardIndex];
+		int numberOfPlacements =
+			distTableCacheEntry->arrayOfPlacementArrayLengths[shardIndex];
+		int placementIndex = 0;
+
+		for (placementIndex = 0; placementIndex < numberOfPlacements; placementIndex++)
+		{
+			ShardPlacement *placement = &placementArray[placementIndex];
+
+			if (placement->groupId == groupId)
+			{
+				resultList = lappend(resultList, placement);
+			}
+		}
+	}
+
+	return resultList;
+}
+
+
 /*
  * ShardIntervalsOnWorkerGroup accepts a WorkerNode and returns a list of the shard
  * intervals of the given table which are placed on the group the node is a part of.
@@ -1050,12 +1082,11 @@ DeleteShardRow(uint64 shardId)
 
 
 /*
- * DeleteShardPlacementRow opens the shard placement system catalog, finds the
- * first (unique) row that corresponds to the given shardId and worker group, and
- * deletes this row.
+ * DeleteShardPlacementRow opens the shard placement system catalog, finds the placement
+ * with the given placementId, and deletes it.
  */
-uint64
-DeleteShardPlacementRow(uint64 shardId, uint32 workerGroup)
+void
+DeleteShardPlacementRow(uint64 placementId)
 {
 	Relation pgDistPlacement = NULL;
 	SysScanDesc scanDescriptor = NULL;
@@ -1063,48 +1094,33 @@ DeleteShardPlacementRow(uint64 shardId, uint32 workerGroup)
 	int scanKeyCount = 1;
 	bool indexOK = true;
 	HeapTuple heapTuple = NULL;
-	bool heapTupleFound = false;
 	TupleDesc tupleDescriptor = NULL;
-	int64 placementId = INVALID_PLACEMENT_ID;
 	bool isNull = false;
+	uint64 shardId = 0;
 
 	pgDistPlacement = heap_open(DistPlacementRelationId(), RowExclusiveLock);
 	tupleDescriptor = RelationGetDescr(pgDistPlacement);
 
-	ScanKeyInit(&scanKey[0], Anum_pg_dist_placement_shardid,
-				BTEqualStrategyNumber, F_INT8EQ, Int64GetDatum(shardId));
+	ScanKeyInit(&scanKey[0], Anum_pg_dist_placement_placementid,
+				BTEqualStrategyNumber, F_INT8EQ, Int64GetDatum(placementId));
 
 	scanDescriptor = systable_beginscan(pgDistPlacement,
-										DistPlacementShardidIndexId(), indexOK,
+										DistPlacementPlacementidIndexId(), indexOK,
 										NULL, scanKeyCount, scanKey);
 
 	heapTuple = systable_getnext(scanDescriptor);
-	while (HeapTupleIsValid(heapTuple))
-	{
-		ShardPlacement *placement = TupleToShardPlacement(tupleDescriptor, heapTuple);
-		if (placement->groupId == workerGroup)
-		{
-			heapTupleFound = true;
-			break;
-		}
-
-		heapTuple = systable_getnext(scanDescriptor);
-	}
-
-	/* if we couldn't find the shard placement to delete, error out */
-	if (!heapTupleFound)
+	if (heapTuple == NULL)
 	{
 		ereport(ERROR, (errmsg("could not find valid entry for shard placement "
-							   UINT64_FORMAT " on group %u",
-							   shardId, workerGroup)));
+							   INT64_FORMAT, placementId)));
 	}
 
-	placementId = heap_getattr(heapTuple, Anum_pg_dist_placement_placementid,
-							   tupleDescriptor, &isNull);
+	shardId = heap_getattr(heapTuple, Anum_pg_dist_placement_shardid,
+						   tupleDescriptor, &isNull);
 	if (HeapTupleHeaderGetNatts(heapTuple->t_data) != Natts_pg_dist_placement ||
 		HeapTupleHasNulls(heapTuple))
 	{
-		ereport(ERROR, (errmsg("unexpected null in pg_dist_placement_tuple")));
+		ereport(ERROR, (errmsg("unexpected null in pg_dist_placement tuple")));
 	}
 
 	simple_heap_delete(pgDistPlacement, &heapTuple->t_self);
@@ -1114,8 +1130,6 @@ DeleteShardPlacementRow(uint64 shardId, uint32 workerGroup)
 
 	CommandCounterIncrement();
 	heap_close(pgDistPlacement, RowExclusiveLock);
-
-	return placementId;
 }
 
 

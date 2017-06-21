@@ -82,6 +82,7 @@ extern bool NodeHasShardPlacements(char *nodeName, int32 nodePort,
 extern List * FinalizedShardPlacementList(uint64 shardId);
 extern ShardPlacement * FinalizedShardPlacement(uint64 shardId, bool missingOk);
 extern List * BuildShardPlacementList(ShardInterval *shardInterval);
+extern List * ShardPlacementsForTableOnGroup(Oid relationId, uint32 groupId);
 
 /* Function declarations to modify shard and shard placement data */
 extern void InsertShardRow(Oid relationId, uint64 shardId, char storageType,
@@ -96,7 +97,7 @@ extern void InsertIntoPgDistPartition(Oid relationId, char distributionMethod,
 extern void DeletePartitionRow(Oid distributedRelationId);
 extern void DeleteShardRow(uint64 shardId);
 extern void UpdateShardPlacementState(uint64 placementId, char shardState);
-extern uint64 DeleteShardPlacementRow(uint64 shardId, uint32 workerGroup);
+extern void DeleteShardPlacementRow(uint64 placementId);
 extern void UpdateColocationGroupReplicationFactor(uint32 colocationId,
 												   int replicationFactor);
 extern void CreateTruncateTrigger(Oid relationId);

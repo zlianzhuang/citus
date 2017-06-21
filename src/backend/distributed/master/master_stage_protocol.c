@@ -603,7 +603,7 @@ UpdateShardStatistics(int64 shardId)
 		uint64 placementId = placement->placementId;
 		uint32 groupId = placement->groupId;
 
-		DeleteShardPlacementRow(shardId, groupId);
+		DeleteShardPlacementRow(placementId);
 		InsertShardPlacementRow(shardId, placementId, FILE_FINALIZED, shardSize,
 								groupId);
 	}
