@@ -101,6 +101,7 @@ extern void DeleteShardPlacementRow(uint64 placementId);
 extern void UpdateColocationGroupReplicationFactor(uint32 colocationId,
 												   int replicationFactor);
 extern void CreateTruncateTrigger(Oid relationId);
+extern void DeleteAllShardPlacementsFromGroup(uint32 groupid);
 
 /* Remaining metadata utility functions  */
 extern char * TableOwner(Oid relationId);

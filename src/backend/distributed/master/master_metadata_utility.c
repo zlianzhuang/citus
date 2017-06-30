@@ -604,6 +604,43 @@ ShardLength(uint64 shardId)
 
 
 /*
+ * DeleteAllShardPlacementsFromGroup iterates over every shard placement in the group
+ * and removes it from the pg_dist_placement table.
+ */
+void
+DeleteAllShardPlacementsFromGroup(uint32 groupId)
+{
+	const int scanKeyCount = 1;
+	const bool indexOK = false;
+	HeapTuple heapTuple = NULL;
+	SysScanDesc scanDescriptor = NULL;
+	ScanKeyData scanKey[scanKeyCount];
+
+	Relation pgPlacement = heap_open(DistPlacementRelationId(),
+									 AccessShareLock);
+
+	ScanKeyInit(&scanKey[0], Anum_pg_dist_placement_groupid,
+				BTEqualStrategyNumber, F_INT4EQ, UInt32GetDatum(groupId));
+
+	scanDescriptor = systable_beginscan(pgPlacement,
+										DistPlacementGroupidIndexId(), indexOK,
+										NULL, scanKeyCount, scanKey);
+
+	while ((heapTuple = systable_getnext(scanDescriptor)) != NULL)
+	{
+		simple_heap_delete(pgPlacement, &heapTuple->t_self);
+	}
+
+	systable_endscan(scanDescriptor);
+
+	// TODO: Do we need to fire off any CitusInvalidateRelcacheByShardId here?
+
+	CommandCounterIncrement();
+	heap_close(pgPlacement, AccessShareLock);
+}
+
+
+/*
  * NodeHasShardPlacements returns whether any active shards are placed on the group
  * this node is a part of.
  */

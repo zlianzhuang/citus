@@ -512,17 +512,19 @@ ReadWorkerNodes()
 static void
 RemoveNodeFromCluster(char *nodeName, int32 nodePort)
 {
-	const bool onlyConsiderActivePlacements = false;
+	const bool onlyConsiderActivePlacements = true;
 	char *nodeDeleteCommand = NULL;
 	bool hasAnyShardPlacements = false;
 	WorkerNode *workerNode = NULL;
 	List *referenceTableList = NIL;
 	uint32 deletedNodeId = INVALID_PLACEMENT_ID;
+	uint32 groupId;
 
 	EnsureCoordinator();
 	EnsureSuperUser();
 
 	workerNode = FindWorkerNode(nodeName, nodePort);
+	groupId = workerNode->groupId;
 
 	if (workerNode != NULL)
 	{
@@ -535,9 +537,11 @@ RemoveNodeFromCluster(char *nodeName, int32 nodePort)
 												   onlyConsiderActivePlacements);
 	if (hasAnyShardPlacements)
 	{
-		ereport(ERROR, (errmsg("you cannot remove a node which has shard placements")));
+		ereport(ERROR, (errmsg("you cannot remove a node which has "
+							   "active shard placements")));
 	}
 
+	DeleteAllShardPlacementsFromGroup(groupId);
 	DeleteNodeRow(nodeName, nodePort);
 
 	/*
