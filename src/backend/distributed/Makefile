@@ -21,10 +21,11 @@ DATA_built = $(foreach v,$(EXTVERSIONS),$(EXTENSION)--$(v).sql)
 # directories with source files
 SUBDIRS = . commands connection executor master metadata planner relay test transaction utils worker
 
+SOURCES = $(foreach dir,$(SUBDIRS), $(sort $(wildcard $(citus_abs_srcdir)/$(dir)/*.c)))
+
 # That patsubst rule searches all directories listed in SUBDIRS for .c
 # files, and adds the corresponding .o files to OBJS
-OBJS += \
-	$(patsubst $(citus_abs_srcdir)/%.c,%.o,$(foreach dir,$(SUBDIRS), $(sort $(wildcard $(citus_abs_srcdir)/$(dir)/*.c))))
+OBJS += $(patsubst $(citus_abs_srcdir)/%.c,%.o,$(SOURCES))
 
 # be explicit about the default target
 all:
@@ -141,6 +142,16 @@ $(EXTENSION)--6.2-4.sql: $(EXTENSION)--6.2-3.sql $(EXTENSION)--6.2-3--6.2-4.sql
 	cat $^ > $@
 $(EXTENSION)--7.0-1.sql: $(EXTENSION)--6.2-4.sql $(EXTENSION)--6.2-4--7.0-1.sql
 	cat $^ > $@
+
+cflow-reverse.out: $(SOURCES)
+	cflow -o$@ --reverse $(SOURCES)
+
+.PHONY: callers
+callers: cflow-reverse.out
+	# Usage: make callers symbol=StartPlacementConnection
+	# Emits the reverse call graph
+	sed -n '/^${symbol}/,$$ { /^${symbol}/! { /^[^ ]/ q }; p}' cflow-reverse.out \
+		| less -S
 
 NO_PGXS = 1
 
