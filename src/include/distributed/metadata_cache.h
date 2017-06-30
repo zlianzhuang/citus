@@ -61,6 +61,7 @@ typedef struct
 	FmgrInfo *hashFunction; /* NULL if table is not distributed by hash */
 
 	/* pg_dist_placement metadata */
+	/* careful, the ShardPlacements in this array may have NULL nodeName */
 	ShardPlacement **arrayOfPlacementArrays;
 	int *arrayOfPlacementArrayLengths;
 } DistTableCacheEntry;

@@ -221,6 +221,9 @@ DistributedTableSizeOnWorker(WorkerNode *workerNode, Oid relationId, char *sizeQ
 }
 
 
+/*
+ * WARNING: The ShardPlacements returned by this function may have a NULL nodeName
+ */
 List *
 ShardPlacementsForTableOnGroup(Oid relationId, uint32 groupId)
 {
@@ -705,6 +708,8 @@ FinalizedShardPlacement(uint64 shardId, bool missingOk)
  *
  * This probably only should be called from metadata_cache.c.  Resides here
  * because it shares code with other routines in this file.
+ *
+ * WARNING: ShardPlacement's returned by this function may have a NULL nodeName/nodePort
  */
 List *
 BuildShardPlacementList(ShardInterval *shardInterval)
@@ -737,15 +742,11 @@ BuildShardPlacementList(ShardInterval *shardInterval)
 		uint32 groupId = placement->groupId;
 		WorkerNode *worker = NodeForGroup(groupId);
 
-		if (worker == NULL)
+		if (worker != NULL)
 		{
-			ereport(ERROR, (errmsg("the metadata is inconsistent"),
-							errdetail("there is a placement in group %u but"
-									  " there are no nodes in that group", groupId)));
+			placement->nodeName = worker->workerName;
+			placement->nodePort = worker->workerPort;
 		}
-
-		placement->nodeName = worker->workerName;
-		placement->nodePort = worker->workerPort;
 
 		shardPlacementList = lappend(shardPlacementList, placement);
 

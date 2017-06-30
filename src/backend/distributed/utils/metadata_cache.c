@@ -301,10 +301,12 @@ LoadShardInterval(uint64 shardId)
 
 
 /*
- * LoadShardPlacement returns the, cached, metadata about a shard placement.
+ * LoadShardPlacement returns the cached shard placement metadata
  *
  * The return value is a copy of the cached ShardPlacement struct and may
  * therefore be modified and/or freed.
+ *
+ * CAUTION: The ShardPlacements returned by this function may have a NULL nodeName
  */
 ShardPlacement *
 LoadShardPlacement(uint64 shardId, uint64 placementId)
@@ -371,10 +373,20 @@ ShardPlacementList(uint64 shardId)
 	for (i = 0; i < numberOfPlacements; i++)
 	{
 		/* copy placement into target context */
-		ShardPlacement *placement = CitusMakeNode(ShardPlacement);
-		CopyShardPlacement(&placementArray[i], placement);
+		ShardPlacement *srcPlacement = &placementArray[i];
+		ShardPlacement *dstPlacement = CitusMakeNode(ShardPlacement);
 
-		placementList = lappend(placementList, placement);
+		if (srcPlacement->nodeName == NULL)
+		{
+			uint32 groupId = srcPlacement->groupId;
+			ereport(ERROR, (errmsg("the metadata is inconsistent"),
+							errdetail("there is a placement in group %u but "
+									  "there are no nodes in that group", groupId)));
+		}
+
+		CopyShardPlacement(srcPlacement, dstPlacement);
+
+		placementList = lappend(placementList, dstPlacement);
 	}
 
 	/* if no shard placements are found, warn the user */
