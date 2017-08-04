@@ -61,6 +61,7 @@
 #include "distributed/pg_dist_partition.h"
 #include "distributed/worker_protocol.h"
 #include "nodes/nodeFuncs.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "utils/catcache.h"
 #include "utils/lsyscache.h"
@@ -448,6 +449,8 @@ PrunableExpressionsWalker(Node *node, ClauseWalkerContext *context)
 		else if (boolExpr->boolop == OR_EXPR)
 		{
 			ListCell *opCell = NULL;
+			ListCell *pendingInstanceCell = NULL;
+			List *newPendingInstances = NIL;
 
 			/*
 			 * "Queue" partial pruning instances.  This is used to convert
@@ -461,23 +464,59 @@ PrunableExpressionsWalker(Node *node, ClauseWalkerContext *context)
 			 * D, by calling PrunableExpressionsWalker() once for B and once
 			 * for C.
 			 */
-			foreach(opCell, boolExpr->args)
+			if (context->pendingInstances == NIL)
 			{
-				PendingPruningInstance *instance =
-					palloc0(sizeof(PendingPruningInstance));
+				foreach(opCell, boolExpr->args)
+				{
+					PendingPruningInstance *instance =
+						palloc0(sizeof(PendingPruningInstance));
 
-				instance->instance = context->currentPruningInstance;
-				instance->continueAt = lfirst(opCell);
+					instance->instance = context->currentPruningInstance;
+					instance->continueAt = lfirst(opCell);
 
-				/*
-				 * Signal that this instance is not to be used for pruning on
-				 * its own.  Once the pending instance is processed, it'll be
-				 * used.
-				 */
-				instance->instance->isPartial = true;
+					/*
+					 * Signal that this instance is not to be used for pruning on
+					 * its own.  Once the pending instance is processed, it'll be
+					 * used.
+					 */
+					instance->instance->isPartial = true;
 
-				context->pendingInstances = lappend(context->pendingInstances, instance);
+					context->pendingInstances = lappend(context->pendingInstances, instance);
+				}
 			}
+			else
+			{
+				foreach(pendingInstanceCell, context->pendingInstances)
+				{
+					foreach(opCell, boolExpr->args)
+					{
+						PendingPruningInstance *instance = palloc0(sizeof(PendingPruningInstance));
+						List *opList = NIL;
+						Expr *andNode = NULL;
+						PendingPruningInstance *previousInstance = lfirst(pendingInstanceCell);
+
+						instance->instance = previousInstance->instance;
+
+						opList = list_make2(previousInstance->continueAt, lfirst(opCell));
+						andNode = makeBoolExpr(AND_EXPR, opList, -1);
+
+						instance->continueAt = (Node *) andNode;
+
+						/*
+						 * Signal that this instance is not to be used for pruning on
+						 * its own.  Once the pending instance is processed, it'll be
+						 * used.
+						 */
+						instance->instance->isPartial = true;
+
+						newPendingInstances = lappend(newPendingInstances, instance);
+					}
+				}
+
+				context->pendingInstances = newPendingInstances;
+			}
+
+
 
 			return false;
 		}
