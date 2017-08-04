@@ -481,7 +481,8 @@ PrunableExpressionsWalker(Node *node, ClauseWalkerContext *context)
 					 */
 					instance->instance->isPartial = true;
 
-					context->pendingInstances = lappend(context->pendingInstances, instance);
+					context->pendingInstances = lappend(context->pendingInstances,
+														instance);
 				}
 			}
 			else
@@ -490,10 +491,12 @@ PrunableExpressionsWalker(Node *node, ClauseWalkerContext *context)
 				{
 					foreach(opCell, boolExpr->args)
 					{
-						PendingPruningInstance *instance = palloc0(sizeof(PendingPruningInstance));
+						PendingPruningInstance *instance = palloc0(
+							sizeof(PendingPruningInstance));
 						List *opList = NIL;
 						Expr *andNode = NULL;
-						PendingPruningInstance *previousInstance = lfirst(pendingInstanceCell);
+						PendingPruningInstance *previousInstance = lfirst(
+							pendingInstanceCell);
 
 						instance->instance = previousInstance->instance;
 
@@ -515,7 +518,6 @@ PrunableExpressionsWalker(Node *node, ClauseWalkerContext *context)
 
 				context->pendingInstances = newPendingInstances;
 			}
-
 
 
 			return false;
