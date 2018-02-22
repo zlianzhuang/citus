@@ -209,12 +209,12 @@ GenerateSubplansForSubqueriesAndCTEs(uint64 planId, Query *originalQuery,
 		RaiseDeferredError(error, ERROR);
 	}
 
-	if (context.subPlanList && (log_min_messages <= DEBUG1 || client_min_messages <=
-								DEBUG1))
+	if (context.subPlanList && (log_min_messages <= WARNING || client_min_messages <=
+								WARNING))
 	{
 		StringInfo subPlanString = makeStringInfo();
 		pg_get_query_def(originalQuery, subPlanString);
-		ereport(DEBUG1, (errmsg(
+		ereport(WARNING, (errmsg(
 							 "Plan " UINT64_FORMAT
 							 " query after replacing subqueries and CTEs: %s", planId,
 							 subPlanString->data)));

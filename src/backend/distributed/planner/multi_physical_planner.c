@@ -581,6 +581,8 @@ BuildJobQuery(MultiNode *multiNode, List *dependedJobList)
 	Node *havingQual = NULL;
 	bool hasDistinctOn = false;
 	List *distinctClause = NIL;
+	bool hasWindowFunction = false;
+	List *windowClause = NIL;
 
 	/* we start building jobs from below the collect node */
 	Assert(!CitusIsA(multiNode, MultiCollect));
@@ -661,6 +663,8 @@ BuildJobQuery(MultiNode *multiNode, List *dependedJobList)
 		limitOffset = extendedOp->limitOffset;
 		sortClauseList = extendedOp->sortClauseList;
 		havingQual = extendedOp->havingQual;
+		hasWindowFunction = extendedOp->hasWindowFuncs;
+		windowClause = extendedOp->windowClause;
 	}
 
 	/* build group clauses */
@@ -706,6 +710,9 @@ BuildJobQuery(MultiNode *multiNode, List *dependedJobList)
 	jobQuery->hasAggs = contain_agg_clause((Node *) targetList);
 	jobQuery->distinctClause = distinctClause;
 	jobQuery->hasDistinctOn = hasDistinctOn;
+	jobQuery->hasWindowFuncs = hasWindowFunction;
+	jobQuery->windowClause = windowClause;
+
 
 	return jobQuery;
 }

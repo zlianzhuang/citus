@@ -371,7 +371,7 @@ HasDistinctAggregate(Query *masterQuery)
 	ListCell *allColumnCell = NULL;
 
 	targetVarList = pull_var_clause((Node *) masterQuery->targetList,
-									PVC_INCLUDE_AGGREGATES);
+									PVC_INCLUDE_AGGREGATES | PVC_RECURSE_WINDOWFUNCS);
 	havingVarList = pull_var_clause(masterQuery->havingQual, PVC_INCLUDE_AGGREGATES);
 
 	allColumnList = list_concat(targetVarList, havingVarList);
