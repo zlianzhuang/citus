@@ -33,6 +33,7 @@
 #include "distributed/citus_nodes.h"
 #include "distributed/citus_ruleutils.h"
 #include "distributed/colocation_utils.h"
+#include "distributed/deparse_shard_query.h"
 #include "distributed/master_protocol.h"
 #include "distributed/metadata_cache.h"
 #include "distributed/multi_router_planner.h"
@@ -130,9 +131,6 @@ static void ErrorIfUnsupportedShardDistribution(Query *query);
 static bool ShardIntervalsEqual(FmgrInfo *comparisonFunction,
 								ShardInterval *firstInterval,
 								ShardInterval *secondInterval);
-static Task * SubqueryTaskCreate(Query *originalQuery, ShardInterval *shardInterval,
-								 RelationRestrictionContext *restrictionContext,
-								 uint32 taskId);
 static List * SqlTaskList(Job *job);
 static bool DependsOnHashPartitionJob(Job *job);
 static uint32 AnchorRangeTableId(List *rangeTableList);
@@ -2120,7 +2118,7 @@ SubquerySqlTaskList(Job *job, PlannerRestrictionContext *plannerRestrictionConte
 			targetCacheEntry->sortedShardIntervalArray[shardOffset];
 		Task *subqueryTask = NULL;
 
-		subqueryTask = SubqueryTaskCreate(subquery, targetShardInterval,
+		subqueryTask = SubqueryTaskCreate(subquery, targetShardInterval->shardIndex,
 										  relationRestrictionContext, taskIdIndex);
 
 
@@ -2353,108 +2351,88 @@ ShardIntervalsEqual(FmgrInfo *comparisonFunction, ShardInterval *firstInterval,
  * The function errors out if the subquery is not router select query (i.e.,
  * subqueries with non equi-joins.).
  */
-static Task *
-SubqueryTaskCreate(Query *originalQuery, ShardInterval *shardInterval,
+Task *
+SubqueryTaskCreate(Query *originalQuery, int shardIndex,
 				   RelationRestrictionContext *restrictionContext,
 				   uint32 taskId)
 {
 	Query *taskQuery = copyObject(originalQuery);
 
-	uint64 shardId = shardInterval->shardId;
-	Oid distributedTableId = shardInterval->relationId;
 	StringInfo queryString = makeStringInfo();
 	ListCell *restrictionCell = NULL;
 	Task *subqueryTask = NULL;
-	List *selectPlacementList = NIL;
-	uint64 selectAnchorShardId = INVALID_SHARD_ID;
+	List *taskShardList = NIL;
 	List *relationShardList = NIL;
+	List *selectPlacementList = NIL;
 	uint64 jobId = INVALID_JOB_ID;
-	bool replacePrunedQueryWithDummy = false;
-	RelationRestrictionContext *copiedRestrictionContext =
-		CopyRelationRestrictionContext(restrictionContext);
-	List *shardOpExpressions = NIL;
-	RestrictInfo *shardRestrictionList = NULL;
-	DeferredErrorMessage *planningError = NULL;
-	bool multiShardModifQuery = false;
+	uint64 anchorShardId = INVALID_SHARD_ID;
 
 	/*
 	 * Add the restriction qual parameter value in all baserestrictinfos.
 	 * Note that this has to be done on a copy, as the originals are needed
 	 * per target shard interval.
 	 */
-	foreach(restrictionCell, copiedRestrictionContext->relationRestrictionList)
+	foreach(restrictionCell, restrictionContext->relationRestrictionList)
 	{
-		RelationRestriction *restriction = lfirst(restrictionCell);
-		Index rteIndex = restriction->index;
-		List *originalBaseRestrictInfo = restriction->relOptInfo->baserestrictinfo;
-		List *extendedBaseRestrictInfo = originalBaseRestrictInfo;
+		RelationRestriction *relationRestriction =
+			(RelationRestriction *) lfirst(restrictionCell);
+		Oid relationId = relationRestriction->relationId;
+		DistTableCacheEntry *cacheEntry = NULL;
+		ShardInterval *shardInterval = NULL;
+		RelationShard *relationShard = NULL;
 
-		shardOpExpressions = ShardIntervalOpExpressions(shardInterval, rteIndex);
-
-		/* means it is a reference table and do not add any shard interval info */
-		if (shardOpExpressions == NIL)
+		cacheEntry = DistributedTableCacheEntry(relationId);
+		if (cacheEntry->partitionMethod == DISTRIBUTE_BY_NONE)
 		{
-			continue;
+			/* reference table only has one shard */
+			shardInterval = cacheEntry->sortedShardIntervalArray[0];
+		}
+		else
+		{
+			/* use the shard from a specific index */
+			shardInterval = cacheEntry->sortedShardIntervalArray[shardIndex];
 		}
 
-		shardRestrictionList = make_simple_restrictinfo((Expr *) shardOpExpressions);
-		extendedBaseRestrictInfo = lappend(extendedBaseRestrictInfo,
-										   shardRestrictionList);
+		taskShardList = lappend(taskShardList, list_make1(shardInterval));
 
-		restriction->relOptInfo->baserestrictinfo = extendedBaseRestrictInfo;
+		relationShard = CitusMakeNode(RelationShard);
+		relationShard->relationId = shardInterval->relationId;
+		relationShard->shardId = shardInterval->shardId;
+
+		relationShardList = lappend(relationShardList, relationShard);
+
+		anchorShardId = shardInterval->shardId;
 	}
 
-	/* mark that we don't want the router planner to generate dummy hosts/queries */
-	replacePrunedQueryWithDummy = false;
+	selectPlacementList = WorkersContainingAllShards(taskShardList);
 
-	/*
-	 * Use router select planner to decide on whether we can push down the query
-	 * or not. If we can, we also rely on the side-effects that all RTEs have been
-	 * updated to point to the relevant nodes and selectPlacementList is determined.
-	 */
-	planningError = PlanRouterQuery(taskQuery, copiedRestrictionContext,
-									&selectPlacementList, &selectAnchorShardId,
-									&relationShardList, replacePrunedQueryWithDummy,
-									&multiShardModifQuery);
+ 	if (list_length(selectPlacementList) == 0)
+ 	{
+ 		ereport(ERROR, (errmsg("cannot find a worker that has active placements for all "
+ 							   "shards in the query")));
+ 		return NULL;
+ 	}
 
-	Assert(!multiShardModifQuery);
+ 	/*
+ 	 * Augment the relations in the query with the shard IDs.
+ 	 */
+ 	UpdateRelationToShardNames((Node *) taskQuery, relationShardList);
 
-	/* we don't expect to this this error but keeping it as a precaution for future changes */
-	if (planningError)
-	{
-		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						errmsg("cannot perform distributed planning for the given "
-							   "query"),
-						errdetail("Select query cannot be pushed down to the worker.")));
-	}
-
-	/* ensure that we do not send queries where select is pruned away completely */
-	if (list_length(selectPlacementList) == 0)
-	{
-		ereport(DEBUG2, (errmsg("Skipping the target shard interval " UINT64_FORMAT
-								" because SELECT query is pruned away for the interval",
-								shardId)));
-
-		return NULL;
-	}
-
-	/*
+ 	/*
 	 * Ands are made implicit during shard pruning, as predicate comparison and
 	 * refutation depend on it being so. We need to make them explicit again so
 	 * that the query string is generated as (...) AND (...) as opposed to
 	 * (...), (...).
 	 */
-	taskQuery->jointree->quals =
-		(Node *) make_ands_explicit((List *) taskQuery->jointree->quals);
+	// taskQuery->jointree->quals = (Node *) make_ands_explicit((List *) taskQuery->jointree->quals);
 
 	/* and generate the full query string */
-	deparse_shard_query(taskQuery, distributedTableId, shardInterval->shardId,
-						queryString);
+	pg_get_query_def(taskQuery, queryString);
 	ereport(DEBUG4, (errmsg("distributed statement: %s", queryString->data)));
 
-	subqueryTask = CreateBasicTask(jobId, taskId, SQL_TASK, queryString->data);
+	subqueryTask = CreateBasicTask(jobId, taskId, MODIFY_TASK, queryString->data);
 	subqueryTask->dependedTaskList = NULL;
-	subqueryTask->anchorShardId = shardInterval->shardId;
+	subqueryTask->anchorShardId = anchorShardId;
 	subqueryTask->taskPlacementList = selectPlacementList;
 	subqueryTask->upsertQuery = false;
 	subqueryTask->relationShardList = relationShardList;

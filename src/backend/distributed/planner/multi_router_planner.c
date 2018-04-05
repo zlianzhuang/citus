@@ -130,7 +130,6 @@ static bool RelationPrunesToMultipleShards(List *relationShardList);
 static List * TargetShardIntervalsForRouter(Query *query,
 											RelationRestrictionContext *restrictionContext,
 											bool *multiShardQuery);
-static List * WorkersContainingAllShards(List *prunedShardIntervalsList);
 static void NormalizeMultiRowInsertTargetList(Query *query);
 static List * BuildRoutesForInsert(Query *query, DeferredErrorMessage **planningError);
 static List * GroupInsertValuesByShardId(List *insertValuesList);
@@ -153,6 +152,8 @@ static List * SingleShardModifyTaskList(Query *query, List *relationShardList,
 										List *placementList, uint64 shardId);
 static List * MultiShardModifyTaskList(Query *originalQuery, List *relationShardList,
 									   bool requiresMasterEvaluation);
+static List *MultiShardModifyTaskListWithMultipleTables(Query *originalQuery, List *relationShardList,
+										   bool requiresMasterEvaluation, RelationRestrictionContext *restrictionContext);
 
 /*
  * CreateRouterPlan attempts to create a router executor plan for the given
@@ -687,27 +688,6 @@ ModifyQuerySupported(Query *queryTree, Query *originalQuery, bool multiShardQuer
 								 "modifications",
 								 rangeTableEntryErrorDetail,
 								 NULL);
-		}
-	}
-
-	/*
-	 * Reject queries which involve joins. Note that UPSERTs are exceptional for this case.
-	 * Queries like "INSERT INTO table_name ON CONFLICT DO UPDATE (col) SET other_col = ''"
-	 * contains two range table entries, and we have to allow them.
-	 */
-	if (commandType != CMD_INSERT && queryTableCount != 1)
-	{
-		/*
-		 * We support UPDATE and DELETE with joins unless they are multi shard
-		 * queries.
-		 */
-		if (!UpdateOrDeleteQuery(queryTree) || multiShardQuery)
-		{
-			return DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
-								 "cannot perform distributed planning for the given "
-								 "modification",
-								 "Joins are not supported in distributed "
-								 "modifications.", NULL);
 		}
 	}
 
@@ -1450,8 +1430,17 @@ RouterJob(Query *originalQuery, RelationRestrictionContext *restrictionContext,
 	}
 	else if (isMultiShardModifyQuery)
 	{
-		job->taskList = MultiShardModifyTaskList(originalQuery, relationShardList,
-												 requiresMasterEvaluation);
+		// If it is a modify task with multiple tables
+		if (list_length(restrictionContext->relationRestrictionList) > 1)
+		{
+			job->taskList = MultiShardModifyTaskListWithMultipleTables(originalQuery, relationShardList,
+																	   requiresMasterEvaluation, restrictionContext);
+		}
+		else
+		{
+			job->taskList = MultiShardModifyTaskList(originalQuery, relationShardList,
+													 requiresMasterEvaluation);
+		}
 	}
 	else
 	{
@@ -1483,6 +1472,84 @@ SingleShardSelectTaskList(Query *query, List *relationShardList, List *placement
 	task->relationShardList = relationShardList;
 
 	return list_make1(task);
+}
+
+
+static List *
+MultiShardModifyTaskListWithMultipleTables(Query *originalQuery, List *relationShardList,
+										   bool requiresMasterEvaluation, RelationRestrictionContext *relationRestrictionContext)
+{
+	List *sqlTaskList = NIL;
+	ListCell *restrictionCell = NULL;
+	uint32 taskIdIndex = 1; /* 0 is reserved for invalid taskId */
+	int shardCount = 0;
+ 	int shardOffset = 0;
+	bool *taskRequiredForShardIndex = NULL;
+	ListCell *prunedRelationShardCell = NULL;
+	bool hasDistributedTable = false;
+
+	forboth(prunedRelationShardCell, relationShardList, restrictionCell, relationRestrictionContext->relationRestrictionList)
+	{
+		RelationRestriction *relationRestriction = (RelationRestriction *) lfirst(restrictionCell);
+		Oid relationId = relationRestriction->relationId;
+		List *prunedShardList = (List *) lfirst(prunedRelationShardCell);
+		ListCell *shardIntervalCell = NULL;
+		DistTableCacheEntry *cacheEntry = NULL;
+
+ 		cacheEntry = DistributedTableCacheEntry(relationId);
+ 		if (cacheEntry->partitionMethod == DISTRIBUTE_BY_NONE)
+ 		{
+ 			continue;
+ 		}
+
+ 		/* we expect distributed tables to have the same shard count */
+ 		if (shardCount > 0 && shardCount != cacheEntry->shardIntervalArrayLength)
+ 		{
+ 			ereport(ERROR, (errmsg("shard counts of co-located tables do not "
+ 								   "match")));
+ 		}
+
+ 		if (taskRequiredForShardIndex == NULL)
+ 		{
+ 			shardCount = cacheEntry->shardIntervalArrayLength;
+ 			taskRequiredForShardIndex = (bool *) palloc0(shardCount);
+ 		}
+
+ 		foreach(shardIntervalCell, prunedShardList)
+ 		{
+ 			ShardInterval *shardInterval = (ShardInterval *) lfirst(shardIntervalCell);
+ 			int shardIndex = shardInterval->shardIndex;
+
+ 			taskRequiredForShardIndex[shardIndex] = true;
+ 		 }
+
+ 		hasDistributedTable = true;
+	}
+
+	if (!hasDistributedTable)
+	{
+		/* query with only reference tables */
+		shardCount = 1;
+	}
+
+ 	for (shardOffset = 0; shardOffset < shardCount; shardOffset++)
+ 	{
+ 		Task *subqueryTask = NULL;
+
+ 		if (taskRequiredForShardIndex != NULL && !taskRequiredForShardIndex[shardOffset])
+ 		{
+ 			/* this shard index is pruned away for all relations */
+ 			continue;
+ 		}
+
+ 		subqueryTask = SubqueryTaskCreate(originalQuery, shardOffset,
+ 										  relationRestrictionContext, taskIdIndex);
+
+ 		sqlTaskList = lappend(sqlTaskList, subqueryTask);
+ 		++taskIdIndex;
+ 	}
+
+ 	return sqlTaskList;
 }
 
 
@@ -1735,6 +1802,7 @@ PlanRouterQuery(Query *originalQuery, RelationRestrictionContext *restrictionCon
 
 	if (isMultiShardModifyQuery)
 	{
+		*relationShardList = prunedRelationShardList;
 		*multiShardModifyQuery = true;
 		return planningError;
 	}
@@ -1949,7 +2017,7 @@ RelationPrunesToMultipleShards(List *relationShardList)
  * exists. The caller should check if there are any shard intervals exist for
  * placement check prior to calling this function.
  */
-static List *
+List *
 WorkersContainingAllShards(List *prunedShardIntervalsList)
 {
 	ListCell *prunedShardIntervalCell = NULL;

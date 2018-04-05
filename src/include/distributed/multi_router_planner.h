@@ -54,6 +54,6 @@ extern bool IsMultiRowInsert(Query *query);
 extern void AddShardIntervalRestrictionToSelect(Query *subqery,
 												ShardInterval *shardInterval);
 extern bool UpdateOrDeleteQuery(Query *query);
-
+extern List * WorkersContainingAllShards(List *prunedShardIntervalsList);
 
 #endif /* MULTI_ROUTER_PLANNER_H */

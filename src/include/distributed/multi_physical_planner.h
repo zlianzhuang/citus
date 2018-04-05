@@ -327,6 +327,9 @@ extern bool TaskListMember(const List *taskList, const Task *task);
 extern List * TaskListDifference(const List *list1, const List *list2);
 extern List * AssignAnchorShardTaskList(List *taskList);
 extern List * FirstReplicaAssignTaskList(List *taskList);
+extern Task * SubqueryTaskCreate(Query *originalQuery, int shardIndex,
+								 RelationRestrictionContext *restrictionContext,
+								 uint32 taskId);
 
 
 #endif   /* MULTI_PHYSICAL_PLANNER_H */
