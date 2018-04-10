@@ -593,9 +593,6 @@ CreateDistributedSelectPlan(uint64 planId, Query *originalQuery, Query *query,
 							ParamListInfo boundParams, bool hasUnresolvedParams,
 							PlannerRestrictionContext *plannerRestrictionContext)
 {
-	RelationRestrictionContext *relationRestrictionContext =
-		plannerRestrictionContext->relationRestrictionContext;
-
 	DistributedPlan *distributedPlan = NULL;
 	MultiTreeRoot *logicalPlan = NULL;
 	List *subPlanList = NIL;
@@ -608,7 +605,7 @@ CreateDistributedSelectPlan(uint64 planId, Query *originalQuery, Query *query,
 	 */
 
 	distributedPlan = CreateRouterPlan(originalQuery, query,
-									   relationRestrictionContext);
+									    plannerRestrictionContext);
 	if (distributedPlan != NULL)
 	{
 		if (distributedPlan->planningError == NULL)
@@ -1190,16 +1187,18 @@ multi_relation_restriction_hook(PlannerInfo *root, RelOptInfo *relOptInfo, Index
 	relationRestriction->parentPlannerInfo = root->parent_root;
 	relationRestriction->prunedShardIntervalList = NIL;
 
-	/* see comments on GetVarFromAssignedParam() */
-	if (relationRestriction->parentPlannerInfo)
-	{
-		relationRestriction->parentPlannerParamList =
-			CopyPlanParamList(root->parent_root->plan_params);
-	}
-
 	relationRestrictionContext = plannerRestrictionContext->relationRestrictionContext;
 	relationRestrictionContext->hasDistributedRelation |= distributedTable;
 	relationRestrictionContext->hasLocalRelation |= localTable;
+
+	/* see comments on GetVarFromAssignedParam() */
+
+	if (relationRestriction->parentPlannerInfo)
+	{
+		List *currentPlanParamList = CopyPlanParamList(root->parent_root->plan_params);
+		relationRestrictionContext->plannerParamList = list_concat(relationRestrictionContext->plannerParamList,
+																   currentPlanParamList);
+	}
 
 	/*
 	 * We're also keeping track of whether all participant

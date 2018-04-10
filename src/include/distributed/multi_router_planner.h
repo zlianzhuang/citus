@@ -27,13 +27,13 @@
 extern bool EnableRouterExecution;
 
 extern DistributedPlan * CreateRouterPlan(Query *originalQuery, Query *query,
-										  RelationRestrictionContext *restrictionContext);
+										  PlannerRestrictionContext *plannerRestrictionContext);
 extern DistributedPlan * CreateModifyPlan(Query *originalQuery, Query *query,
 										  PlannerRestrictionContext *
 										  plannerRestrictionContext);
 extern DeferredErrorMessage * PlanRouterQuery(Query *originalQuery,
-											  RelationRestrictionContext *
-											  restrictionContext,
+											  PlannerRestrictionContext *
+											  plannerRestrictionContext,
 											  List **placementList, uint64 *anchorShardId,
 											  List **relationShardList, bool
 											  replacePrunedQueryWithDummy,
@@ -41,7 +41,7 @@ extern DeferredErrorMessage * PlanRouterQuery(Query *originalQuery,
 extern List * RouterInsertTaskList(Query *query, DeferredErrorMessage **planningError);
 extern List * IntersectPlacementList(List *lhsPlacementList, List *rhsPlacementList);
 extern DeferredErrorMessage * ModifyQuerySupported(Query *queryTree, Query *originalQuery,
-												   bool multiShardQuery);
+												   bool multiShardQuery,PlannerRestrictionContext *plannerRestrictionContext);
 extern List * ShardIntervalOpExpressions(ShardInterval *shardInterval, Index rteIndex);
 extern RelationRestrictionContext * CopyRelationRestrictionContext(
 	RelationRestrictionContext *oldContext);

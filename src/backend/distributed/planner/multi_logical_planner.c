@@ -80,11 +80,6 @@ typedef MultiNode *(*RuleApplyFunction) (MultiNode *leftNode, MultiNode *rightNo
 static RuleApplyFunction RuleApplyFunctionArray[JOIN_RULE_LAST] = { 0 }; /* join rules */
 
 /* Local functions forward declarations */
-static DeferredErrorMessage * DeferErrorIfUnsupportedSubqueryPushdown(Query *
-																	  originalQuery,
-																	  PlannerRestrictionContext
-																	  *
-																	  plannerRestrictionContext);
 static DeferredErrorMessage * DeferErrorIfFromClauseRecurs(Query *queryTree);
 static bool ExtractSetOperationStatmentWalker(Node *node, List **setOperationList);
 static DeferredErrorMessage * DeferErrorIfUnsupportedTableCombination(Query *queryTree);
@@ -561,7 +556,7 @@ SingleRelationRepartitionSubquery(Query *queryTree)
  * to worker nodes. These helper functions returns a deferred error if we
  * cannot push down the subquery.
  */
-static DeferredErrorMessage *
+DeferredErrorMessage *
 DeferErrorIfUnsupportedSubqueryPushdown(Query *originalQuery,
 										PlannerRestrictionContext *
 										plannerRestrictionContext)

@@ -71,7 +71,7 @@ static bool ContainsMultipleDistributedRelations(PlannerRestrictionContext *
 static List * GenerateAttributeEquivalencesForRelationRestrictions(
 	RelationRestrictionContext *restrictionContext);
 static AttributeEquivalenceClass * AttributeEquivalenceClassForEquivalenceClass(
-	EquivalenceClass *plannerEqClass, RelationRestriction *relationRestriction);
+	EquivalenceClass *plannerEqClass, RelationRestriction *relationRestriction, RelationRestrictionContext *restrictionContext);
 static void AddToAttributeEquivalenceClass(AttributeEquivalenceClass **
 										   attributeEquivalanceClass,
 										   PlannerInfo *root, Var *varToBeAdded);
@@ -692,7 +692,8 @@ GenerateAttributeEquivalencesForRelationRestrictions(RelationRestrictionContext
 
 			AttributeEquivalenceClass *attributeEquivalance =
 				AttributeEquivalenceClassForEquivalenceClass(plannerEqClass,
-															 relationRestriction);
+															 relationRestriction,
+															 restrictionContext);
 
 			attributeEquivalenceList =
 				AddAttributeClassToAttributeClassList(attributeEquivalenceList,
@@ -716,7 +717,8 @@ GenerateAttributeEquivalencesForRelationRestrictions(RelationRestrictionContext
  */
 static AttributeEquivalenceClass *
 AttributeEquivalenceClassForEquivalenceClass(EquivalenceClass *plannerEqClass,
-											 RelationRestriction *relationRestriction)
+											 RelationRestriction *relationRestriction,
+											 RelationRestrictionContext *restrictionContext)
 {
 	AttributeEquivalenceClass *attributeEquivalance =
 		palloc0(sizeof(AttributeEquivalenceClass));
@@ -737,7 +739,7 @@ AttributeEquivalenceClassForEquivalenceClass(EquivalenceClass *plannerEqClass,
 
 		if (IsA(strippedEquivalenceExpr, Param))
 		{
-			List *parentParamList = relationRestriction->parentPlannerParamList;
+			List *parentParamList = restrictionContext->plannerParamList;
 			Param *equivalenceParam = (Param *) strippedEquivalenceExpr;
 
 			expressionVar = GetVarFromAssignedParam(parentParamList,

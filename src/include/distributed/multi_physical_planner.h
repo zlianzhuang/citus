@@ -329,7 +329,7 @@ extern List * AssignAnchorShardTaskList(List *taskList);
 extern List * FirstReplicaAssignTaskList(List *taskList);
 extern Task * SubqueryTaskCreate(Query *originalQuery, int shardIndex,
 								 RelationRestrictionContext *restrictionContext,
-								 uint32 taskId);
+								 uint32 taskId, TaskType taskType);
 
 
 #endif   /* MULTI_PHYSICAL_PLANNER_H */

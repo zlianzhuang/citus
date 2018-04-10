@@ -29,6 +29,7 @@ typedef struct RelationRestrictionContext
 	bool hasDistributedRelation;
 	bool hasLocalRelation;
 	bool allReferenceTables;
+	List *plannerParamList;
 	List *relationRestrictionList;
 } RelationRestrictionContext;
 
@@ -41,7 +42,6 @@ typedef struct RelationRestriction
 	RelOptInfo *relOptInfo;
 	PlannerInfo *plannerInfo;
 	PlannerInfo *parentPlannerInfo;
-	List *parentPlannerParamList;
 	List *prunedShardIntervalList;
 } RelationRestriction;
 

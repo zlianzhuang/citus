@@ -203,7 +203,7 @@ SET citus.multi_shard_modify_mode to sequential;
 UPDATE tt2 SET col_2 = 3 RETURNING id, col_2;
 DROP TABLE tt2;
 
--- Multiple RTEs are not supported
+-- Multiple RTEs are only supported if subquery is pushdownable
 SET citus.multi_shard_modify_mode to DEFAULT;
 UPDATE users_test_table SET value_2 = 5 FROM events_test_table WHERE users_test_table.user_id = events_test_table.user_id; 
 UPDATE users_test_table SET value_2 = (SELECT value_3 FROM users_test_table);
@@ -212,6 +212,8 @@ UPDATE users_test_table SET value_2 = (SELECT value_2 FROM events_test_table);
 DELETE FROM users_test_table USING events_test_table WHERE users_test_table.user_id = events_test_table.user_id;
 DELETE FROM users_test_table WHERE users_test_table.user_id = (SELECT user_id FROM events_test_table);
 DELETE FROM users_test_table WHERE users_test_table.user_id = (SELECT value_1 FROM users_test_table);
+
+update tt1 set value_1 = 1 where id in (select count(value_1) from tt2 group by id);
 
 -- Cursors are not supported
 BEGIN;

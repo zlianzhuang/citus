@@ -2119,7 +2119,7 @@ SubquerySqlTaskList(Job *job, PlannerRestrictionContext *plannerRestrictionConte
 		Task *subqueryTask = NULL;
 
 		subqueryTask = SubqueryTaskCreate(subquery, targetShardInterval->shardIndex,
-										  relationRestrictionContext, taskIdIndex);
+										  relationRestrictionContext, taskIdIndex, SQL_TASK);
 
 
 		/* add the task if it could be created */
@@ -2354,7 +2354,7 @@ ShardIntervalsEqual(FmgrInfo *comparisonFunction, ShardInterval *firstInterval,
 Task *
 SubqueryTaskCreate(Query *originalQuery, int shardIndex,
 				   RelationRestrictionContext *restrictionContext,
-				   uint32 taskId)
+				   uint32 taskId, TaskType taskType)
 {
 	Query *taskQuery = copyObject(originalQuery);
 
@@ -2424,13 +2424,16 @@ SubqueryTaskCreate(Query *originalQuery, int shardIndex,
 	 * that the query string is generated as (...) AND (...) as opposed to
 	 * (...), (...).
 	 */
-	// taskQuery->jointree->quals = (Node *) make_ands_explicit((List *) taskQuery->jointree->quals);
+	if (taskQuery->jointree->quals != NULL && IsA(taskQuery->jointree->quals, List))
+	{
+		taskQuery->jointree->quals = (Node *) make_ands_explicit((List *) taskQuery->jointree->quals);
+	}
 
 	/* and generate the full query string */
 	pg_get_query_def(taskQuery, queryString);
 	ereport(DEBUG4, (errmsg("distributed statement: %s", queryString->data)));
 
-	subqueryTask = CreateBasicTask(jobId, taskId, MODIFY_TASK, queryString->data);
+	subqueryTask = CreateBasicTask(jobId, taskId, taskType, queryString->data);
 	subqueryTask->dependedTaskList = NULL;
 	subqueryTask->anchorShardId = anchorShardId;
 	subqueryTask->taskPlacementList = selectPlacementList;
