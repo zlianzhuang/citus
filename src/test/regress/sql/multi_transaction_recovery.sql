@@ -40,11 +40,15 @@ SELECT count(*) FROM pg_tables WHERE tablename = 'should_commit';
 SET citus.shard_replication_factor TO 2;
 SET citus.shard_count TO 2;
 SET citus.multi_shard_commit_protocol TO '2pc';
+-- test non-unique transaction id generation
+SET citus.enable_unique_prepared_txn_ids TO false;
 
 -- create_distributed_table should add 2 recovery records (1 connection per node)
 CREATE TABLE test_recovery (x text);
 SELECT create_distributed_table('test_recovery', 'x');
-SELECT count(*) FROM pg_dist_transaction;
+SELECT * FROM pg_dist_transaction;
+
+SET citus.enable_unique_prepared_txn_ids TO true;
 
 -- create_reference_table should add another 2 recovery records
 CREATE TABLE test_recovery_ref (x text);

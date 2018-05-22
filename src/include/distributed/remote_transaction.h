@@ -80,6 +80,10 @@ typedef struct RemoteTransaction
 } RemoteTransaction;
 
 
+/* config variable managed by guc.c */
+extern bool EnableUniquePreparedTxnIds;
+
+
 /* utility functions for dealing with remote transactions */
 extern bool ParsePreparedTransactionName(char *preparedTransactionName,
 										 uint64 *transactionNumber);

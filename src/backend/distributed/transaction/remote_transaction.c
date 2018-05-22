@@ -27,8 +27,12 @@
 #include "utils/hsearch.h"
 
 
-#define PREPARED_TRANSACTION_NAME_FORMAT "citus_%u_%u_"UINT64_FORMAT "_%u"
+/* print all numbers as unsigned to guarantee no minus symbols appear in the name */
+#define PREPARED_TRANSACTION_UNIQUE_NAME_FORMAT "citus_%u_%u_"UINT64_FORMAT "_%u"
+#define PREPARED_TRANSACTION_SHORT_NAME_FORMAT "citus_%u_"UINT64_FORMAT "_%u"
 
+/* config variable managed by guc.c */
+bool EnableUniquePreparedTxnIds;
 
 static void StartRemoteTransactionSavepointBegin(MultiConnection *connection,
 												 SubTransactionId subId);
@@ -1293,10 +1297,18 @@ Assign2PCIdentifier(MultiConnection *connection)
 	/* transaction identifier that is unique across processes */
 	uint64 transactionNumber = CurrentDistributedTransactionNumber();
 
-	/* print all numbers as unsigned to guarantee no minus symbols appear in the name */
-	snprintf(connection->remoteTransaction.preparedName, NAMEDATALEN,
-			 PREPARED_TRANSACTION_NAME_FORMAT, GetLocalGroupId(), MyProcPid,
-			 transactionNumber, connectionNumber++);
+	if (EnableUniquePreparedTxnIds)
+	{
+		snprintf(connection->remoteTransaction.preparedName, NAMEDATALEN,
+				 PREPARED_TRANSACTION_UNIQUE_NAME_FORMAT, GetLocalGroupId(), MyProcPid,
+				 transactionNumber, connectionNumber++);
+	}
+	else
+	{
+		snprintf(connection->remoteTransaction.preparedName, NAMEDATALEN,
+				 PREPARED_TRANSACTION_SHORT_NAME_FORMAT, GetLocalGroupId(),
+				 transactionNumber, connectionNumber++);
+	}
 }
 
 
@@ -1308,7 +1320,6 @@ Assign2PCIdentifier(MultiConnection *connection)
 bool
 ParsePreparedTransactionName(char *preparedTransactionName, uint64 *transactionNumber)
 {
-	const int expectedFieldCount = 4;
 	int parsedFieldCount = 0;
 	bool nameValid = false;
 
@@ -1317,11 +1328,28 @@ ParsePreparedTransactionName(char *preparedTransactionName, uint64 *transactionN
 	uint32 procId = 0;
 	uint32 connectionNumber = 0;
 
-	parsedFieldCount = sscanf(preparedTransactionName, PREPARED_TRANSACTION_NAME_FORMAT,
-							  &groupId, &procId, transactionNumber, &connectionNumber);
-	if (parsedFieldCount == expectedFieldCount)
+	if (EnableUniquePreparedTxnIds)
 	{
-		nameValid = true;
+		const int expectedFieldCount = 4;
+		parsedFieldCount = sscanf(preparedTransactionName,
+								  PREPARED_TRANSACTION_UNIQUE_NAME_FORMAT,
+								  &groupId, &procId, transactionNumber,
+								  &connectionNumber);
+		if (parsedFieldCount == expectedFieldCount)
+		{
+			nameValid = true;
+		}
+	}
+	else
+	{
+		const int expectedFieldCount = 3;
+		parsedFieldCount = sscanf(preparedTransactionName,
+								  PREPARED_TRANSACTION_SHORT_NAME_FORMAT,
+								  &groupId, transactionNumber, &connectionNumber);
+		if (parsedFieldCount == expectedFieldCount)
+		{
+			nameValid = true;
+		}
 	}
 
 	return nameValid;

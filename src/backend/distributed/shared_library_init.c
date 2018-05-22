@@ -880,6 +880,18 @@ RegisterCitusConfigVariables(void)
 		GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL,
 		NULL, NULL, NULL);
 
+	DefineCustomBoolVariable(
+		"citus.enable_unique_prepared_txn_ids",
+		gettext_noop("Ensures prepared transaction IDs from different nodes do not "
+					 "with each other. This should usually be enabled, but can be "
+					 "disabled for repeatable output in regression tests."),
+		NULL,
+		&EnableUniquePreparedTxnIds,
+		true,
+		PGC_USERSET,
+		GUC_SUPERUSER_ONLY | GUC_NO_SHOW_ALL,
+		NULL, NULL, NULL);
+
 	DefineCustomIntVariable(
 		"citus.next_shard_id",
 		gettext_noop("Set the next shard ID to use in shard creation."),
