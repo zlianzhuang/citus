@@ -461,15 +461,12 @@ PendingWorkerTransactionList(MultiConnection *connection)
 static bool
 IsTransactionInProgress(HTAB *activeTransactionNumberSet, char *preparedTransactionName)
 {
-	int groupId = 0;
-	int procId = 0;
-	uint32 connectionNumber = 0;
 	uint64 transactionNumber = 0;
 	bool isValidName = false;
 	bool isTransactionInProgress = false;
 
-	isValidName = ParsePreparedTransactionName(preparedTransactionName, &groupId, &procId,
-											   &transactionNumber, &connectionNumber);
+	isValidName = ParsePreparedTransactionName(preparedTransactionName,
+											   &transactionNumber);
 	if (isValidName)
 	{
 		hash_search(activeTransactionNumberSet, &transactionNumber, HASH_FIND,

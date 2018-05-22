@@ -1301,21 +1301,24 @@ Assign2PCIdentifier(MultiConnection *connection)
 
 
 /*
- * ParsePreparedTransactionName parses a prepared transaction name to extract
- * the initiator group ID, initiator process ID, distributed transaction number,
- * and the connection number. If the transaction name does not match the expected
+ * ParsePreparedTransactionName parses a prepared transaction name to extract the
+ * distributed transaction number. If the transaction name does not match the expected
  * format ParsePreparedTransactionName returns false, and true otherwise.
  */
 bool
-ParsePreparedTransactionName(char *preparedTransactionName, int *groupId, int *procId,
-							 uint64 *transactionNumber, uint32 *connectionNumber)
+ParsePreparedTransactionName(char *preparedTransactionName, uint64 *transactionNumber)
 {
 	const int expectedFieldCount = 4;
 	int parsedFieldCount = 0;
 	bool nameValid = false;
 
+	/* these are unused for now */
+	uint32 groupId = 0;
+	uint32 procId = 0;
+	uint32 connectionNumber = 0;
+
 	parsedFieldCount = sscanf(preparedTransactionName, PREPARED_TRANSACTION_NAME_FORMAT,
-							  groupId, procId, transactionNumber, connectionNumber);
+							  &groupId, &procId, transactionNumber, &connectionNumber);
 	if (parsedFieldCount == expectedFieldCount)
 	{
 		nameValid = true;
