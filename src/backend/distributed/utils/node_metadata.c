@@ -734,11 +734,11 @@ FindWorkerNode(char *nodeName, int32 nodePort)
 	bool handleFound = false;
 	void *hashKey = NULL;
 
-	WorkerNode *searchedNode = (WorkerNode *) palloc0(sizeof(WorkerNode));
-	strlcpy(searchedNode->workerName, nodeName, WORKER_LENGTH);
-	searchedNode->workerPort = nodePort;
+	WorkerNode searchedNode;
+	strlcpy((&searchedNode)->workerName, nodeName, WORKER_LENGTH);
+	(&searchedNode)->workerPort = nodePort;
 
-	hashKey = (void *) searchedNode;
+	hashKey = (void *) &searchedNode;
 	workerNode = (WorkerNode *) hash_search(workerNodeHash, hashKey,
 											HASH_FIND, &handleFound);
 
