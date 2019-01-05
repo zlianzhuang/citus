@@ -2224,7 +2224,18 @@ ErrorIfUnsupportedShardDistribution(Query *query)
 	foreach(relationIdCell, relationIdList)
 	{
 		Oid relationId = lfirst_oid(relationIdCell);
-		char partitionMethod = PartitionMethod(relationId);
+		char partitionMethod = 0;
+		char relkind = get_rel_relkind(relationId);
+		if (relkind == RELKIND_MATVIEW)
+		{
+			/*
+			 * In case of REFRESH MATERIALIZED VIEW there will be an RTE for
+			 * the materialised view, which we can safely ignore.
+			 */
+			continue;
+		}
+
+		partitionMethod = PartitionMethod(relationId);
 		if (partitionMethod == DISTRIBUTE_BY_RANGE)
 		{
 			rangeDistributedRelationCount++;

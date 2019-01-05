@@ -423,6 +423,27 @@ EXPLAIN (COSTS FALSE) SELECT et.* FROM recent_10_users JOIN events_table et USIN
 
 RESET citus.subquery_pushdown;
 
+CREATE TABLE t1 (col1 int,col2 int);
+create table t2 (col1 int,col2 int);
+SELECT create_distributed_table('t1','col1');
+SELECT create_distributed_table('t2','col1');
+CREATE MATERIALIZED VIEW join_view AS
+SELECT t1.col2,temp_sum.target
+FROM t1,t2,(SELECT sum(col1) AS target FROM t2) AS temp_sum
+WHERE t1.col1=t2.col1;
+
+SELECT * FROM join_view;
+
+INSERT INTO t1 VALUES (2,2);
+INSERT INTO t2 VALUES (2,3);
+REFRESH MATERIALIZED VIEW join_view;
+
+SELECT * FROM join_view;
+
+DROP MATERIALIZED VIEW join_view;
+DROP TABLE t1;
+DROP TABLE T2;
+
 DROP VIEW recent_10_users;
 DROP VIEW router_view;
 DROP VIEW cte_view_2;
