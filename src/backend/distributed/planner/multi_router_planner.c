@@ -1880,7 +1880,6 @@ PlanRouterQuery(Query *originalQuery,
 				Const **partitionValueConst)
 {
 	static uint32 zeroShardQueryRoundRobin = 0;
-
 	bool isMultiShardQuery = false;
 	List *prunedRelationShardList = NIL;
 	DeferredErrorMessage *planningError = NULL;
@@ -2067,7 +2066,9 @@ PlanRouterQuery(Query *originalQuery,
 	 */
 	if (!(UpdateOrDeleteQuery(originalQuery) && RequiresMasterEvaluation(originalQuery)))
 	{
-		UpdateRelationToShardNames((Node *) originalQuery, *relationShardList);
+		List *allRTEs = ExtractRTEList(originalQuery);
+
+		UpdateRelationToShardNames(allRTEs, *relationShardList);
 	}
 
 	*multiShardModifyQuery = false;

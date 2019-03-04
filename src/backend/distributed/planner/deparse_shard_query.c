@@ -90,7 +90,7 @@ RebuildQueryStrings(Query *originalQuery, List *taskList)
 				copiedInsertRte->alias = alias;
 			}
 
-			UpdateRelationToShardNames((Node *) copiedSubquery, relationShardList);
+			UpdateRelationToShardNames(ExtractRTEList(copiedSubquery), relationShardList);
 		}
 		else if (task->upsertQuery || valuesRTE != NULL)
 		{
@@ -156,7 +156,7 @@ UpdateTaskQueryString(Query *query, Oid distributedTableId, RangeTblEntry *value
 	else
 	{
 		List *relationShardList = task->relationShardList;
-		UpdateRelationToShardNames((Node *) query, relationShardList);
+		UpdateRelationToShardNames(ExtractRTEList(query), relationShardList);
 
 		pg_get_query_def(query, queryString);
 	}
@@ -179,83 +179,68 @@ UpdateTaskQueryString(Query *query, Oid distributedTableId, RangeTblEntry *value
  * by set of NULL values so that the query would work at worker without any problems.
  *
  */
-bool
-UpdateRelationToShardNames(Node *node, List *relationShardList)
+void
+UpdateRelationToShardNames(List *rangeTableList, List *relationShardList)
 {
-	RangeTblEntry *newRte = NULL;
-	uint64 shardId = INVALID_SHARD_ID;
-	Oid relationId = InvalidOid;
-	Oid schemaId = InvalidOid;
-	char *relationName = NULL;
-	char *schemaName = NULL;
-	bool replaceRteWithNullValues = false;
-	ListCell *relationShardCell = NULL;
-	RelationShard *relationShard = NULL;
+	ListCell *rangeTableCell = NULL;
 
-	if (node == NULL)
+	foreach(rangeTableCell, rangeTableList)
 	{
-		return false;
-	}
+		RangeTblEntry *newRte = NULL;
+		uint64 shardId = INVALID_SHARD_ID;
+		Oid relationId = InvalidOid;
+		Oid schemaId = InvalidOid;
+		char *relationName = NULL;
+		char *schemaName = NULL;
+		bool replaceRteWithNullValues = false;
+		ListCell *relationShardCell = NULL;
+		RelationShard *relationShard = NULL;
 
-	/* want to look at all RTEs, even in subqueries, CTEs and such */
-	if (IsA(node, Query))
-	{
-		return query_tree_walker((Query *) node, UpdateRelationToShardNames,
-								 relationShardList, QTW_EXAMINE_RTES);
-	}
+		newRte = lfirst(rangeTableCell);
 
-	if (!IsA(node, RangeTblEntry))
-	{
-		return expression_tree_walker(node, UpdateRelationToShardNames,
-									  relationShardList);
-	}
-
-	newRte = (RangeTblEntry *) node;
-
-	if (newRte->rtekind != RTE_RELATION)
-	{
-		return false;
-	}
-
-	/*
-	 * Search for the restrictions associated with the RTE. There better be
-	 * some, otherwise this query wouldn't be elegible as a router query.
-	 *
-	 * FIXME: We should probably use a hashtable here, to do efficient
-	 * lookup.
-	 */
-	foreach(relationShardCell, relationShardList)
-	{
-		relationShard = (RelationShard *) lfirst(relationShardCell);
-
-		if (newRte->relid == relationShard->relationId)
+		if (newRte->rtekind != RTE_RELATION)
 		{
-			break;
+			continue;
 		}
 
-		relationShard = NULL;
+		/*
+		 * Search for the restrictions associated with the RTE. There better be
+		 * some, otherwise this query wouldn't be elegible as a router query.
+		 *
+		 * FIXME: We should probably use a hashtable here, to do efficient
+		 * lookup.
+		 */
+		foreach(relationShardCell, relationShardList)
+		{
+			relationShard = (RelationShard *) lfirst(relationShardCell);
+
+			if (newRte->relid == relationShard->relationId)
+			{
+				break;
+			}
+
+			relationShard = NULL;
+		}
+
+		replaceRteWithNullValues = relationShard == NULL ||
+								   relationShard->shardId == INVALID_SHARD_ID;
+		if (replaceRteWithNullValues)
+		{
+			ConvertRteToSubqueryWithEmptyResult(newRte);
+			continue;
+		}
+
+		shardId = relationShard->shardId;
+		relationId = relationShard->relationId;
+
+		relationName = get_rel_name(relationId);
+		AppendShardIdToName(&relationName, shardId);
+
+		schemaId = get_rel_namespace(relationId);
+		schemaName = get_namespace_name(schemaId);
+
+		ModifyRangeTblExtraData(newRte, CITUS_RTE_SHARD, schemaName, relationName, NIL);
 	}
-
-	replaceRteWithNullValues = relationShard == NULL ||
-							   relationShard->shardId == INVALID_SHARD_ID;
-	if (replaceRteWithNullValues)
-	{
-		ConvertRteToSubqueryWithEmptyResult(newRte);
-		return false;
-	}
-
-	shardId = relationShard->shardId;
-	relationId = relationShard->relationId;
-
-	relationName = get_rel_name(relationId);
-	AppendShardIdToName(&relationName, shardId);
-
-	schemaId = get_rel_namespace(relationId);
-	schemaName = get_namespace_name(schemaId);
-
-	ModifyRangeTblExtraData(newRte, CITUS_RTE_SHARD, schemaName, relationName, NIL);
-
-	return false;
 }
 
 

@@ -21,7 +21,7 @@
 
 
 extern void RebuildQueryStrings(Query *originalQuery, List *taskList);
-extern bool UpdateRelationToShardNames(Node *node, List *relationShardList);
+extern void UpdateRelationToShardNames(List *rangeTableList, List *relationShardList);
 
 
 #endif /* DEPARSE_SHARD_QUERY_H */
