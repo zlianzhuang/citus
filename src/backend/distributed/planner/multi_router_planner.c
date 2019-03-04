@@ -1694,6 +1694,9 @@ SingleShardSelectTaskList(Query *query, uint64 jobId, List *relationShardList,
 	StringInfo queryString = makeStringInfo();
 	List *relationRowLockList = NIL;
 
+	/* try to avoid doing many allocations during deparsing */
+	enlargeStringInfo(queryString, 500);
+
 	RowLocksOnRelations((Node *) query, &relationRowLockList);
 	pg_get_query_def(query, queryString);
 
