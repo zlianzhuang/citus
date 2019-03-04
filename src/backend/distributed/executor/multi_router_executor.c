@@ -544,12 +544,6 @@ CitusModifyBeginScan(CustomScanState *node, EState *estate, int eflags)
 	/* prevent concurrent placement changes */
 	AcquireMetadataLocks(taskList);
 
-	/*
-	 * We are taking locks on partitions of partitioned tables. These locks are
-	 * necessary for locking tables that appear in the SELECT part of the query.
-	 */
-	LockPartitionsInRelationList(distributedPlan->relationIdList, AccessShareLock);
-
 	/* modify tasks are always assigned using first-replica policy */
 	workerJob->taskList = FirstReplicaAssignTaskList(taskList);
 }
