@@ -29,6 +29,7 @@
 bool LogRemoteCommands = false;
 
 
+static void AddMemoryContextResetCallback(MemoryContextCallbackFunction callback, void *arg);
 static bool FinishConnectionIO(MultiConnection *connection, bool raiseInterrupts);
 static WaitEventSet * BuildWaitEventSet(MultiConnection **allConnections,
 										int totalConnectionCount,
@@ -648,6 +649,21 @@ FinishConnectionIO(MultiConnection *connection, bool raiseInterrupts)
 {
 	PGconn *pgConn = connection->pgConn;
 	int socket = PQsocket(pgConn);
+	long timeout = -1;
+	WaitEvent event;
+	WaitEventSet *waitEventSet = CreateWaitEventSet(CurrentMemoryContext, 3);
+
+	AddMemoryContextResetCallback((MemoryContextCallbackFunction) (&FreeWaitEventSet),
+								  (void *) waitEventSet);
+
+	AddWaitEventToSet(waitEventSet, WL_SOCKET_READABLE, socket, NULL, NULL);
+	AddWaitEventToSet(waitEventSet, WL_LATCH_SET, PGINVALID_SOCKET, MyLatch, NULL);
+
+	if (IsUnderPostmaster)
+	{
+		AddWaitEventToSet(waitEventSet, WL_POSTMASTER_DEATH, PGINVALID_SOCKET,
+						  NULL, NULL);
+	}
 
 	Assert(pgConn);
 	Assert(PQisnonblocking(pgConn));
@@ -661,7 +677,6 @@ FinishConnectionIO(MultiConnection *connection, bool raiseInterrupts)
 	while (true)
 	{
 		int sendStatus = 0;
-		int rc = 0;
 		int waitFlags = WL_POSTMASTER_DEATH | WL_LATCH_SET;
 
 		/* try to send all pending data */
@@ -693,13 +708,15 @@ FinishConnectionIO(MultiConnection *connection, bool raiseInterrupts)
 			return true;
 		}
 
-		rc = WaitLatchOrSocket(MyLatch, waitFlags, socket, 0, PG_WAIT_EXTENSION);
-		if (rc & WL_POSTMASTER_DEATH)
+		ModifyWaitEvent(waitEventSet, 0, waitFlags & WL_SOCKET_MASK, NULL);
+
+		WaitEventSetWait(waitEventSet, timeout, &event, 1, PG_WAIT_EXTENSION);
+		if (event.events & WL_POSTMASTER_DEATH)
 		{
 			ereport(ERROR, (errmsg("postmaster was shut down, exiting")));
 		}
 
-		if (rc & WL_LATCH_SET)
+		if (event.events & WL_LATCH_SET)
 		{
 			ResetLatch(MyLatch);
 
@@ -723,6 +740,17 @@ FinishConnectionIO(MultiConnection *connection, bool raiseInterrupts)
 	}
 
 	return false;
+}
+
+
+static void
+AddMemoryContextResetCallback(MemoryContextCallbackFunction callback, void *arg)
+{
+	MemoryContextCallback *cb = MemoryContextAllocZero(CurrentMemoryContext,
+													   sizeof(MemoryContextCallback));
+	cb->func = callback;
+	cb->arg = arg;
+	MemoryContextRegisterResetCallback(CurrentMemoryContext, cb);
 }
 
 
