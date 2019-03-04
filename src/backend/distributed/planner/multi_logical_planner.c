@@ -2026,9 +2026,24 @@ ExtractRangeTableEntryWalker(Node *node, List **rangeTableList)
 	}
 	else if (IsA(node, Query))
 	{
-		walkIsComplete = query_tree_walker((Query *) node,
-										   ExtractRangeTableEntryWalker,
-										   rangeTableList, QTW_EXAMINE_RTES);
+		Query *query = (Query *) node;
+
+		if (query->hasSubLinks || query->cteList || query->setOperations)
+		{
+			/* descend into all parts of the query */
+			walkIsComplete = query_tree_walker((Query *) node,
+											   ExtractRangeTableEntryWalker,
+											   rangeTableList,
+											   QTW_EXAMINE_RTES);
+		}
+		else
+		{
+			/* descend only into RTEs */
+			walkIsComplete = range_table_walker(query->rtable,
+												ExtractRangeTableEntryWalker,
+												rangeTableList,
+												QTW_EXAMINE_RTES);
+		}
 	}
 	else
 	{
