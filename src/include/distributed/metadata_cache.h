@@ -46,6 +46,8 @@ typedef struct
 	bool hasUninitializedShardInterval;
 	bool hasUniformHashDistribution; /* valid for hash partitioned tables */
 	bool hasOverlappingShardInterval;
+	bool isPartition;
+	bool isPartitioned;
 
 	/* pg_dist_partition metadata for this table */
 	char *partitionKeyString;
@@ -97,6 +99,7 @@ extern ShardPlacement * FindShardPlacementOnGroup(int32 groupId, uint64 shardId)
 extern GroupShardPlacement * LoadGroupShardPlacement(uint64 shardId, uint64 placementId);
 extern ShardPlacement * LoadShardPlacement(uint64 shardId, uint64 placementId);
 extern DistTableCacheEntry * DistributedTableCacheEntry(Oid distributedRelationId);
+extern DistTableCacheEntry * LookupDistTableCacheEntry(Oid relationId);
 extern int32 GetLocalGroupId(void);
 extern List * DistTableOidList(void);
 extern Oid LookupShardRelation(int64 shardId, bool missing_ok);

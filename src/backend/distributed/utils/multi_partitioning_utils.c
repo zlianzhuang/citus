@@ -40,18 +40,9 @@ static char * PartitionBound(Oid partitionId);
 bool
 PartitionedTable(Oid relationId)
 {
-	Relation rel = heap_open(relationId, AccessShareLock);
-	bool partitionedTable = false;
+	DistTableCacheEntry *cacheEntry = LookupDistTableCacheEntry(relationId);
 
-	if (rel->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
-	{
-		partitionedTable = true;
-	}
-
-	/* keep the lock */
-	heap_close(rel, NoLock);
-
-	return partitionedTable;
+	return cacheEntry->isPartitioned;
 }
 
 
@@ -90,15 +81,9 @@ PartitionedTableNoLock(Oid relationId)
 bool
 PartitionTable(Oid relationId)
 {
-	Relation rel = heap_open(relationId, AccessShareLock);
-	bool partitionTable = false;
+	DistTableCacheEntry *cacheEntry = LookupDistTableCacheEntry(relationId);
 
-	partitionTable = rel->rd_rel->relispartition;
-
-	/* keep the lock */
-	heap_close(rel, NoLock);
-
-	return partitionTable;
+	return cacheEntry->isPartition;
 }
 
 

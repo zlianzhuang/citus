@@ -173,7 +173,6 @@ static ScanKeyData DistShardScanKey[1];
 /* local function forward declarations */
 static bool IsDistributedTableViaCatalog(Oid relationId);
 static ShardCacheEntry * LookupShardCacheEntry(int64 shardId);
-static DistTableCacheEntry * LookupDistTableCacheEntry(Oid relationId);
 static void BuildDistTableCacheEntry(DistTableCacheEntry *cacheEntry);
 static void BuildCachedShardList(DistTableCacheEntry *cacheEntry);
 static ShardInterval ** SortShardIntervalArray(ShardInterval **shardIntervalArray,
@@ -794,7 +793,7 @@ DistributedTableCacheEntry(Oid distributedRelationId)
  * LookupDistTableCacheEntry returns the distributed table metadata for the
  * passed relationId. For efficiency it caches lookups.
  */
-static DistTableCacheEntry *
+DistTableCacheEntry *
 LookupDistTableCacheEntry(Oid relationId)
 {
 	DistTableCacheEntry *cacheEntry = NULL;
@@ -806,7 +805,7 @@ LookupDistTableCacheEntry(Oid relationId)
 	 * yet. As we can't do lookups in nonexistent tables, directly return NULL
 	 * here.
 	 */
-	if (!CitusHasBeenLoaded())
+	if (!CitusHasBeenLoaded() || relationId == InvalidOid)
 	{
 		return NULL;
 	}
@@ -900,6 +899,21 @@ BuildDistTableCacheEntry(DistTableCacheEntry *cacheEntry)
 	bool partitionKeyIsNull = false;
 	Datum datumArray[Natts_pg_dist_partition];
 	bool isNullArray[Natts_pg_dist_partition];
+
+	Relation relation = try_relation_open(cacheEntry->relationId, AccessShareLock);
+	if (relation != NULL)
+	{
+		if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
+		{
+			cacheEntry->isPartitioned = true;
+		}
+		if (relation->rd_rel->relispartition)
+		{
+			cacheEntry->isPartition = true;
+		}
+
+		heap_close(relation, AccessShareLock);
+	}
 
 	pgDistPartition = heap_open(DistPartitionRelationId(), AccessShareLock);
 	distPartitionTuple =
