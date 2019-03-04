@@ -122,7 +122,7 @@ GeneratePlaceHolderPlannedStmt(Query *parse)
 	/* there is only a single relation rte */
 	seqScanNode->scanrelid = 1;
 
-	plan->targetlist = copyObject(parse->targetList);
+	plan->targetlist = parse->targetList;
 	plan->qual = NULL;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
@@ -133,7 +133,7 @@ GeneratePlaceHolderPlannedStmt(Query *parse)
 	result->queryId = parse->queryId;
 	result->stmt_len = parse->stmt_len;
 
-	result->rtable = copyObject(parse->rtable);
+	result->rtable = parse->rtable;
 	result->planTree = (Plan *) plan;
 
 	relationId = ExtractFirstDistributedTableId(parse);
