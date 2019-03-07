@@ -2318,6 +2318,7 @@ QueryPushdownTaskCreate(Query *originalQuery, int shardIndex,
 						TaskType taskType, bool modifyRequiresMasterEvaluation)
 {
 	Query *taskQuery = copyObject(originalQuery);
+	List *allRTEs = ExtractRTEList(taskQuery);
 
 	StringInfo queryString = makeStringInfo();
 	ListCell *restrictionCell = NULL;
@@ -5375,6 +5376,7 @@ AssignDualHashTaskList(List *taskList)
 			ShardPlacement *taskPlacement = CitusMakeNode(ShardPlacement);
 			taskPlacement->nodeName = pstrdup(workerNode->workerName);
 			taskPlacement->nodePort = workerNode->workerPort;
+			taskPlacement->nodeId = workerNode->nodeId;
 
 			taskPlacementList = lappend(taskPlacementList, taskPlacement);
 		}
