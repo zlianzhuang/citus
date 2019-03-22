@@ -40,6 +40,7 @@ PlanGrantStmt(GrantStmt *grantStmt)
 			case OBJECT_SCHEMA:
 			case OBJECT_DATABASE:
 #else
+			case ACL_OBJECT_NAMESPACE:
 			case ACL_OBJECT_DATABASE:
 #endif
 				{
