@@ -21,6 +21,11 @@ PlanGrantStmt(GrantStmt *grantStmt)
 {
 	bool showPropagationWarning = false;
 
+	/* don't emit warnings in worker nodes */
+	if (!IsCoordinator())
+	{
+		return NIL;
+	}
 
 	if (grantStmt->targtype == ACL_TARGET_ALL_IN_SCHEMA)
 	{
