@@ -66,7 +66,7 @@ PartitionedTable(Oid relationId)
 bool
 PartitionedTableNoLock(Oid relationId)
 {
-	Relation rel = RelationIdGetRelation(relationId);
+	Relation rel = try_relation_open(relationId, NoLock);
 	bool partitionedTable = false;
 
 	/* don't error out for tables that are dropped */
@@ -80,7 +80,7 @@ PartitionedTableNoLock(Oid relationId)
 		partitionedTable = true;
 	}
 
-	RelationClose(rel);
+	heap_close(rel, NoLock);
 
 	return partitionedTable;
 }
@@ -112,7 +112,7 @@ PartitionTable(Oid relationId)
 bool
 PartitionTableNoLock(Oid relationId)
 {
-	Relation rel = RelationIdGetRelation(relationId);
+	Relation rel = try_relation_open(relationId, NoLock);
 	bool partitionTable = false;
 
 	/* don't error out for tables that are dropped */
@@ -123,7 +123,7 @@ PartitionTableNoLock(Oid relationId)
 
 	partitionTable = rel->rd_rel->relispartition;
 
-	RelationClose(rel);
+	heap_close(rel, NoLock);
 
 	return partitionTable;
 }
