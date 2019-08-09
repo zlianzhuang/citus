@@ -104,7 +104,33 @@ CompareShardIntervals(const void *leftElement, const void *rightElement,
 
 
 /*
- * CompareShardIntervalsById is a comparison function for sort shard
+ * CompareShardIds is a comparison function for sorting shard Ids.
+ */
+int
+CompareShardIds(const void *leftElement, const void *rightElement)
+{
+	int64 *leftShardIdPointer = (int64 *) leftElement;
+	int64 *rightShardIdPointer = (int64 *) rightElement;
+	int64 leftShardId = *leftShardIdPointer;
+	int64 rightShardId = *rightShardIdPointer;
+
+	if (leftShardId > rightShardId)
+	{
+		return 1;
+	}
+	else if (leftShardId < rightShardId)
+	{
+		return -1;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+
+/*
+ * CompareShardIntervalsById is a comparison function for sorting shard
  * intervals by their shard ID.
  */
 int

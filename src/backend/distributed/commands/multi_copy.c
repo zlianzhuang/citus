@@ -2210,7 +2210,7 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 
 	CopyStmt *copyStatement = NULL;
 
-	List *shardIntervalList = NULL;
+	List *shardList = NULL;
 
 	CopyOutState copyOutState = NULL;
 	const char *delimiterCharacter = "\t";
@@ -2225,8 +2225,8 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 	copyDest->tupleDescriptor = inputTupleDescriptor;
 
 	/* load the list of shards and verify that we have shards to copy into */
-	shardIntervalList = LoadShardIntervalList(tableId);
-	if (shardIntervalList == NIL)
+	shardList = LoadShardList(tableId);
+	if (shardList == NIL)
 	{
 		if (partitionMethod == DISTRIBUTE_BY_HASH)
 		{
@@ -2258,13 +2258,13 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 	}
 
 	/* prevent concurrent placement changes and non-commutative DML statements */
-	LockShardListMetadata(shardIntervalList, ShareLock);
+	LockShardListMetadata(shardList, ShareLock);
 
 	/*
 	 * Prevent concurrent UPDATE/DELETE on replication factor >1
 	 * (see AcquireExecutorMultiShardLocks() at multi_router_executor.c)
 	 */
-	SerializeNonCommutativeWrites(shardIntervalList, RowExclusiveLock);
+	SerializeNonCommutativeWrites(shardList, RowExclusiveLock);
 
 	/* keep the table metadata to avoid looking it up for every tuple */
 	copyDest->tableMetadata = cacheEntry;

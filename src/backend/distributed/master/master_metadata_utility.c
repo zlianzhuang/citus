@@ -57,7 +57,6 @@
 
 
 /* Local functions forward declarations */
-static uint64 * AllocateUint64(uint64 value);
 static void RecordDistributedRelationDependencies(Oid distributedRelationId,
 												  Node *distributionKey);
 static GroupShardPlacement * TupleToGroupShardPlacement(TupleDesc tupleDesc,
@@ -538,7 +537,7 @@ LoadShardList(Oid relationId)
 
 
 /* Allocates eight bytes, and copies given value's contents those bytes. */
-static uint64 *
+uint64 *
 AllocateUint64(uint64 value)
 {
 	uint64 *allocatedValue = (uint64 *) palloc0(sizeof(uint64));

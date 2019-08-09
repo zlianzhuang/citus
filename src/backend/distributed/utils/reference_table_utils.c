@@ -423,7 +423,6 @@ void
 DeleteAllReferenceTablePlacementsFromNodeGroup(int32 groupId)
 {
 	List *referenceTableList = ReferenceTableOidList();
-	List *referenceShardIntervalList = NIL;
 	ListCell *referenceTableCell = NULL;
 
 	/* if there are no reference tables, we do not need to do anything */
@@ -439,9 +438,9 @@ DeleteAllReferenceTablePlacementsFromNodeGroup(int32 groupId)
 	referenceTableList = SortList(referenceTableList, CompareOids);
 	if (ClusterHasKnownMetadataWorkers())
 	{
-		referenceShardIntervalList = GetSortedReferenceShardIntervals(referenceTableList);
+		List *referenceShardList = GetSortedReferenceShards(referenceTableList);
 
-		BlockWritesToShardList(referenceShardIntervalList);
+		BlockWritesToShardList(referenceShardList);
 	}
 
 	foreach(referenceTableCell, referenceTableList)

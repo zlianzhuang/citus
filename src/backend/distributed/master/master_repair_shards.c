@@ -138,21 +138,21 @@ BlockWritesToShardList(List *shardList)
 	ListCell *shardCell = NULL;
 
 	bool shouldSyncMetadata = false;
-	ShardInterval *firstShardInterval = NULL;
+	int64 *firstShardIdPointer = 0;
 	Oid firstDistributedTableId = InvalidOid;
 
 	foreach(shardCell, shardList)
 	{
-		ShardInterval *shard = (ShardInterval *) lfirst(shardCell);
+		int64 *shardIdPointer = (int64 *) lfirst(shardCell);
 
 		/*
 		 * We need to lock the referenced reference table metadata to avoid
 		 * asynchronous shard copy in case of cascading DML operations.
 		 */
-		LockReferencedReferenceShardDistributionMetadata(shard->shardId,
+		LockReferencedReferenceShardDistributionMetadata(*shardIdPointer,
 														 ExclusiveLock);
 
-		LockShardDistributionMetadata(shard->shardId, ExclusiveLock);
+		LockShardDistributionMetadata(*shardIdPointer, ExclusiveLock);
 	}
 
 	/* following code relies on the list to have at least one shard */
@@ -165,8 +165,8 @@ BlockWritesToShardList(List *shardList)
 	 * Since the function assumes that the input shards are colocated,
 	 * calculating shouldSyncMetadata for a single table is sufficient.
 	 */
-	firstShardInterval = (ShardInterval *) linitial(shardList);
-	firstDistributedTableId = firstShardInterval->relationId;
+	firstShardIdPointer = (int64 *) linitial(shardList);
+	firstDistributedTableId = LookupShardRelation(*firstShardIdPointer, false);
 
 	shouldSyncMetadata = ShouldSyncTableMetadata(firstDistributedTableId);
 	if (shouldSyncMetadata)

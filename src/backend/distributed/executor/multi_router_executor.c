@@ -239,9 +239,9 @@ AcquireExecutorShardLockForRowModify(Task *task, RowModifyLevel modLevel)
 
 	if (lockMode != NoLock)
 	{
-		ShardInterval *shardInterval = LoadShardInterval(shardId);
+		uint64 *shardIdPointer = AllocateUint64(shardId);
 
-		SerializeNonCommutativeWrites(list_make1(shardInterval), lockMode);
+		SerializeNonCommutativeWrites(list_make1(shardIdPointer), lockMode);
 	}
 }
 
@@ -279,7 +279,7 @@ AcquireExecutorShardLocksForRelationRowLockList(Task *task)
 
 			if (PartitionMethod(relationId) == DISTRIBUTE_BY_NONE)
 			{
-				List *shardIntervalList = LoadShardIntervalList(relationId);
+				List *shardList = LoadShardList(relationId);
 
 				if (rowLockStrength == LCS_FORKEYSHARE || rowLockStrength == LCS_FORSHARE)
 				{
@@ -291,7 +291,7 @@ AcquireExecutorShardLocksForRelationRowLockList(Task *task)
 					rowLockMode = ExclusiveLock;
 				}
 
-				SerializeNonCommutativeWrites(shardIntervalList, rowLockMode);
+				SerializeNonCommutativeWrites(shardList, rowLockMode);
 			}
 		}
 	}

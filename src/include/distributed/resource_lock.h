@@ -83,12 +83,12 @@ extern void LockJobResource(uint64 jobId, LOCKMODE lockmode);
 extern void UnlockJobResource(uint64 jobId, LOCKMODE lockmode);
 
 /* Lock multiple shards for safe modification */
-extern void LockShardListMetadata(List *shardIntervalList, LOCKMODE lockMode);
+extern void LockShardListMetadata(List *shardList, LOCKMODE lockMode);
 extern void LockShardsInPlacementListMetadata(List *shardPlacementList,
 											  LOCKMODE lockMode);
-extern void SerializeNonCommutativeWrites(List *shardIntervalList, LOCKMODE lockMode);
+extern void SerializeNonCommutativeWrites(List *shardList, LOCKMODE lockMode);
 extern void LockRelationShardResources(List *relationShardList, LOCKMODE lockMode);
-extern List * GetSortedReferenceShardIntervals(List *relationList);
+extern List * GetSortedReferenceShards(List *relationList);
 
 /* Lock partitions of partitioned table */
 extern void LockPartitionsInRelationList(List *relationIdList, LOCKMODE lockmode);

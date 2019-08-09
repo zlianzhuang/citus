@@ -29,6 +29,7 @@ typedef struct ShardIntervalCompareFunctionCacheEntry
 extern ShardInterval * LowestShardIntervalById(List *shardIntervalList);
 extern int CompareShardIntervals(const void *leftElement, const void *rightElement,
 								 FmgrInfo *typeCompareFunction);
+extern int CompareShardIds(const void *leftElement, const void *rightElement);
 extern int CompareShardIntervalsById(const void *leftElement, const void *rightElement);
 extern int CompareShardPlacementsByShardId(const void *leftElement, const
 										   void *rightElement);
