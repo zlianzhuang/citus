@@ -132,6 +132,13 @@ CoordinatedTransactionUse2PC(void)
 }
 
 
+bool
+CoordinatedTransactionUsing2PC(void)
+{
+	return CoordinatedTransactionUses2PC;
+}
+
+
 void
 InitializeTransactionManagement(void)
 {

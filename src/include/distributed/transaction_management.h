@@ -102,6 +102,7 @@ extern StringInfo activeSetStmts;
 extern void BeginOrContinueCoordinatedTransaction(void);
 extern bool InCoordinatedTransaction(void);
 extern void CoordinatedTransactionUse2PC(void);
+extern bool CoordinatedTransactionUsing2PC(void);
 extern bool IsMultiStatementTransaction(void);
 
 /* initialization function(s) */

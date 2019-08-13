@@ -252,6 +252,7 @@ ALTER TABLE limit_orders_750000 RENAME TO renamed_orders;
 -- Fourth: Perform an INSERT on the remaining node
 -- the whole transaction should fail
 \set VERBOSITY terse
+set citus.multi_shard_commit_protocol to '1pc';
 INSERT INTO limit_orders VALUES (276, 'ADR', 140, '2007-07-02 16:32:15', 'sell', 43.67);
 
 -- set the shard name back

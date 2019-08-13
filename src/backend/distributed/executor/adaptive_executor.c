@@ -252,6 +252,11 @@ typedef struct DistributedExecution
 	 */
 	uint64 rowsProcessed;
 
+	/*
+	 * 1PC needs to store placement id to mark invalid after throwing a hard error
+	 */
+	uint64 markPlacementIdInvalidInCatch;
+
 	/* statistics on distributed execution */
 	DistributedExecutionStats *executionStats;
 } DistributedExecution;
@@ -567,7 +572,8 @@ static void PlacementExecutionDone(TaskPlacementExecution *placementExecution,
 								   bool succeeded);
 static void ScheduleNextPlacementExecution(TaskPlacementExecution *placementExecution,
 										   bool succeeded);
-static bool ShouldMarkPlacementsInvalidOnFailure(DistributedExecution *execution);
+static bool ShouldMarkPlacementsInvalidOnFailure(
+	TaskPlacementExecution *placementExecution);
 static void PlacementExecutionReady(TaskPlacementExecution *placementExecution);
 static TaskExecutionState TaskExecutionStateMachine(ShardCommandExecution *
 													shardCommandExecution);
@@ -806,7 +812,7 @@ StartDistributedExecution(DistributedExecution *execution)
 	{
 		/*
 		 * We prefer to error on any failures for CREATE INDEX
-		 * CONCURRENTLY or VACUUM//VACUUM ANALYZE (e.g., COMMIT_PROTOCOL_BARE).
+		 * CONCURRENTLY or VACUUM/VACUUM ANALYZE (e.g., COMMIT_PROTOCOL_BARE).
 		 */
 		execution->errorOnAnyFailure = true;
 	}
@@ -938,12 +944,29 @@ DistributedExecutionRequiresRollback(DistributedExecution *execution)
 
 	if (list_length(task->taskPlacementList) > 1)
 	{
-		/*
-		 * Adaptive executor opts to error out on queries if a placement is unhealthy,
-		 * not marking the placement itself unhealthy in the process.
-		 * Use 2PC to rollback placements before the unhealthy shard failed.
+		/* 2PC is necessary to rollback all shards if a subset of shards fail. */
+		if (MultiShardCommitProtocol == COMMIT_PROTOCOL_2PC)
+		{
+			return true;
+		}
+
+		/* Some tasks don't set replicationModel thus we only
+		 * rely on the anchorShardId, not replicationModel.
+		 *
+		 * TODO: Do we ever need replicationModel in the Task structure?
+		 * Can't we always rely on anchorShardId?
 		 */
-		return true;
+		if (task->anchorShardId != INVALID_SHARD_ID && ReferenceTableShardId(
+				task->anchorShardId))
+		{
+			return true;
+		}
+
+		/*
+		 * Single DML/DDL tasks with replicated tables (non-reference)
+		 * should not require BEGIN/COMMIT/ROLLBACK.
+		 */
+		return false;
 	}
 
 	return false;
@@ -1750,6 +1773,12 @@ RunDistributedExecution(DistributedExecution *execution)
 			execution->waitEventSet = NULL;
 		}
 
+		if (execution->markPlacementIdInvalidInCatch != 0)
+		{
+			UpdateShardPlacementState(execution->markPlacementIdInvalidInCatch,
+									  FILE_INACTIVE);
+		}
+
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -2427,6 +2456,12 @@ TransactionStateMachine(WorkerSession *session)
 				{
 					if (!IsResponseOK(result))
 					{
+						if (ShouldMarkPlacementsInvalidOnFailure(session->currentTask))
+						{
+							execution->markPlacementIdInvalidInCatch =
+								session->currentTask->shardPlacement->shardId;
+						}
+
 						/* query failures are always hard errors */
 						ReportResultError(connection, result, ERROR);
 					}
@@ -2452,7 +2487,6 @@ TransactionStateMachine(WorkerSession *session)
 					MarkRemoteTransactionCritical(connection);
 
 					session->currentTask = NULL;
-
 					PlacementExecutionDone(placementExecution, succeeded);
 
 					/* connection is ready to use for executing commands */
@@ -2522,7 +2556,6 @@ TransactionStateMachine(WorkerSession *session)
 			}
 		}
 	}
-
 	/* iterate in case we can perform multiple transitions at once */
 	while (transaction->transactionState != currentState);
 }
@@ -2930,6 +2963,12 @@ ReceiveResults(WorkerSession *session, bool storeRows)
 		}
 		else if (resultStatus != PGRES_SINGLE_TUPLE)
 		{
+			if (ShouldMarkPlacementsInvalidOnFailure(session->currentTask))
+			{
+				execution->markPlacementIdInvalidInCatch =
+					session->currentTask->shardPlacement->shardId;
+			}
+
 			/* query failures are always hard errors */
 			ReportResultError(connection, result, ERROR);
 		}
@@ -3146,18 +3185,10 @@ PlacementExecutionDone(TaskPlacementExecution *placementExecution, bool succeede
 	}
 	else
 	{
-		if (ShouldMarkPlacementsInvalidOnFailure(execution))
+		if (ShouldMarkPlacementsInvalidOnFailure(placementExecution))
 		{
-			ShardPlacement *shardPlacement = placementExecution->shardPlacement;
-
-			/*
-			 * We only set shard state if its current state is FILE_FINALIZED, which
-			 * prevents overwriting shard state if it is already set at somewhere else.
-			 */
-			if (shardPlacement->shardState == FILE_FINALIZED)
-			{
-				UpdateShardPlacementState(shardPlacement->placementId, FILE_INACTIVE);
-			}
+			UpdateShardPlacementState(placementExecution->shardPlacement->placementId,
+									  FILE_INACTIVE);
 		}
 
 		if (placementExecution->executionState == PLACEMENT_EXECUTION_NOT_READY)
@@ -3258,21 +3289,29 @@ ScheduleNextPlacementExecution(TaskPlacementExecution *placementExecution, bool 
  * should trigger marking placements invalid.
  */
 static bool
-ShouldMarkPlacementsInvalidOnFailure(DistributedExecution *execution)
+ShouldMarkPlacementsInvalidOnFailure(TaskPlacementExecution *placementExecution)
 {
-	if (!DistributedExecutionModifiesDatabase(execution) || execution->errorOnAnyFailure)
+	WorkerPool *workerPool = placementExecution->workerPool;
+	DistributedExecution *execution = workerPool->distributedExecution;
+
+	if (!DistributedExecutionModifiesDatabase(execution) ||
+		(execution->errorOnAnyFailure && CoordinatedTransactionUsing2PC()))
 	{
 		/*
 		 * Failures that do not modify the database (e.g., mainly SELECTs) should
 		 * never lead to invalid placement.
 		 *
-		 * Failures that lead throwing error, no need to mark any placement
-		 * invalid.
+		 * Failures that throw errors with 2pc rollback,
+		 * so don't mark placements invalid in that case.
 		 */
 		return false;
 	}
 
-	return true;
+	/*
+	 * We only set shard state if its current state is FILE_FINALIZED, which
+	 * prevents overwriting shard state if it is already set at somewhere else.
+	 */
+	return placementExecution->shardPlacement->shardState == FILE_FINALIZED;
 }
 
 
