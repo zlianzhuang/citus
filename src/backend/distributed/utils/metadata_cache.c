@@ -20,6 +20,7 @@
 #include "access/sysattr.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_enum.h"
 #include "catalog/pg_extension.h"
 #include "catalog/pg_namespace.h"
@@ -74,6 +75,7 @@
 
 /* user configuration */
 int ReadFromSecondaries = USE_SECONDARY_NODES_NEVER;
+
 
 /*
  * ShardCacheEntry represents an entry in the shardId -> ShardInterval cache.
@@ -188,10 +190,6 @@ static ShardCacheEntry * LookupShardCacheEntry(int64 shardId);
 static DistTableCacheEntry * LookupDistTableCacheEntry(Oid relationId);
 static void BuildDistTableCacheEntry(DistTableCacheEntry *cacheEntry);
 static void BuildCachedShardList(DistTableCacheEntry *cacheEntry);
-static ShardInterval ** SortShardIntervalArray(ShardInterval **shardIntervalArray,
-											   int shardCount,
-											   FmgrInfo *
-											   shardIntervalSortCompareFunction);
 static void PrepareWorkerNodeCache(void);
 static bool HasUninitializedShardInterval(ShardInterval **sortedShardIntervalArray,
 										  int shardCount);
@@ -1267,6 +1265,8 @@ BuildCachedShardList(DistTableCacheEntry *cacheEntry)
 		/* sort the interval array */
 		sortedShardIntervalArray = SortShardIntervalArray(shardIntervalArray,
 														  shardIntervalArrayLength,
+														  cacheEntry->partitionColumn->
+														  varcollid,
 														  shardIntervalCompareFunction);
 
 		/* check if there exists any shard intervals with no min/max values */
@@ -1375,29 +1375,6 @@ BuildCachedShardList(DistTableCacheEntry *cacheEntry)
 
 
 /*
- * SortedShardIntervalArray sorts the input shardIntervalArray. Shard intervals with
- * no min/max values are placed at the end of the array.
- */
-static ShardInterval **
-SortShardIntervalArray(ShardInterval **shardIntervalArray, int shardCount,
-					   FmgrInfo *shardIntervalSortCompareFunction)
-{
-	/* short cut if there are no shard intervals in the array */
-	if (shardCount == 0)
-	{
-		return shardIntervalArray;
-	}
-
-	/* if a shard doesn't have min/max values, it's placed in the end of the array */
-	qsort_arg(shardIntervalArray, shardCount, sizeof(ShardInterval *),
-			  (qsort_arg_comparator) CompareShardIntervals,
-			  (void *) shardIntervalSortCompareFunction);
-
-	return shardIntervalArray;
-}
-
-
-/*
  * HasUniformHashDistribution determines whether the given list of sorted shards
  * has a uniform hash distribution, as produced by master_create_worker_shards for
  * hash partitioned tables.
@@ -1502,9 +1479,10 @@ HasOverlappingShardInterval(ShardInterval **shardIntervalArray,
 		Assert(lastShardInterval->minValueExists && lastShardInterval->maxValueExists);
 		Assert(curShardInterval->minValueExists && curShardInterval->maxValueExists);
 
-		comparisonDatum = CompareCall2(shardIntervalSortCompareFunction,
-									   lastShardInterval->maxValue,
-									   curShardInterval->minValue);
+		comparisonDatum = FunctionCall2Coll(shardIntervalSortCompareFunction,
+											DEFAULT_COLLATION_OID,
+											lastShardInterval->maxValue,
+											curShardInterval->minValue);
 		comparisonResult = DatumGetInt32(comparisonDatum);
 
 		if (comparisonResult >= 0)

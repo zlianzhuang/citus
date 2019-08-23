@@ -52,6 +52,33 @@ LowestShardIntervalById(List *shardIntervalList)
 
 
 /*
+ * SortedShardIntervalArray sorts the input shardIntervalArray. Shard intervals with
+ * no min/max values are placed at the end of the array.
+ */
+ShardInterval **
+SortShardIntervalArray(ShardInterval **shardIntervalArray, int shardCount,
+					   Oid collation, FmgrInfo *shardIntervalSortCompareFunction)
+{
+	SortShardIntervalContext sortContext = {
+		.finfo = shardIntervalSortCompareFunction,
+		.collation = collation
+	};
+
+	/* short cut if there are no shard intervals in the array */
+	if (shardCount == 0)
+	{
+		return shardIntervalArray;
+	}
+
+	/* if a shard doesn't have min/max values, it's placed in the end of the array */
+	qsort_arg(shardIntervalArray, shardCount, sizeof(ShardInterval *),
+			  (qsort_arg_comparator) CompareShardIntervals, (void *) &sortContext);
+
+	return shardIntervalArray;
+}
+
+
+/*
  * CompareShardIntervals acts as a helper function to compare two shard intervals
  * by their minimum values, using the value's type comparison function.
  *
@@ -60,7 +87,7 @@ LowestShardIntervalById(List *shardIntervalList)
  */
 int
 CompareShardIntervals(const void *leftElement, const void *rightElement,
-					  FmgrInfo *typeCompareFunction)
+					  SortShardIntervalContext *sortContext)
 {
 	ShardInterval *leftShardInterval = *((ShardInterval **) leftElement);
 	ShardInterval *rightShardInterval = *((ShardInterval **) rightElement);
@@ -89,7 +116,9 @@ CompareShardIntervals(const void *leftElement, const void *rightElement,
 		/* if both shard interval have min/max values, calculate comparison result */
 		Datum leftDatum = leftShardInterval->minValue;
 		Datum rightDatum = rightShardInterval->minValue;
-		Datum comparisonDatum = CompareCall2(typeCompareFunction, leftDatum, rightDatum);
+		Datum comparisonDatum = FunctionCall2Coll(sortContext->finfo,
+												  sortContext->collation, leftDatum,
+												  rightDatum);
 		comparisonResult = DatumGetInt32(comparisonDatum);
 	}
 

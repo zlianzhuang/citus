@@ -253,6 +253,40 @@ UPDATE test SET y = 40;
 COMMIT;
 SELECT DISTINCT y FROM test;
 
+-- non deterministic collations
+select public.run_command_on_master_and_workers($$
+CREATE COLLATION test_pg12.case_insensitive (
+	provider = icu,
+	locale = 'und-u-ks-level2',
+	deterministic = false
+);
+$$);
+
+select worker_hash('asdf'::text) asdf, worker_hash('aSdf'::text) "aSdf",
+	worker_hash('asdf'::text collate case_insensitive) "Casdf",
+	worker_hash('aSdf'::text collate case_insensitive) "CaSdf";
+
+CREATE TABLE col_test (
+	id text collate case_insensitive,
+	val text collate case_insensitive,
+	key int
+);
+
+insert into col_test values
+	('asdF','vaLue', 1), ('Asdf','vAlue', 2), ('asDF','valUE', 3);
+
+select create_distributed_table('col_test', 'id');
+
+insert into col_test values
+	('aSdf','vALue', 4), ('AsDf','vAluE', 5), ('asdF','value', 6);
+
+select count(*)
+from col_test
+where id = 'asdf';
+
+select count(*)
+from col_test
+where val = 'value';
 
 \set VERBOSITY terse
 drop schema test_pg12 cascade;
