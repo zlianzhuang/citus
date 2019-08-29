@@ -384,6 +384,7 @@ CreateReferenceTableColocationId()
 	uint32 colocationId = INVALID_COLOCATION_ID;
 	int shardCount = 1;
 	Oid distributionColumnType = InvalidOid;
+	Oid distributionColumnCollation = InvalidOid;
 
 	/*
 	 * We don't maintain replication factor of reference tables anymore and
@@ -392,11 +393,13 @@ CreateReferenceTableColocationId()
 	int replicationFactor = -1;
 
 	/* check for existing colocations */
-	colocationId = ColocationId(shardCount, replicationFactor, distributionColumnType);
+	colocationId = ColocationId(shardCount, replicationFactor,
+								distributionColumnType, distributionColumnCollation);
 	if (colocationId == INVALID_COLOCATION_ID)
 	{
 		colocationId = CreateColocationGroup(shardCount, replicationFactor,
-											 distributionColumnType);
+											 distributionColumnType,
+											 distributionColumnCollation);
 	}
 
 	return colocationId;

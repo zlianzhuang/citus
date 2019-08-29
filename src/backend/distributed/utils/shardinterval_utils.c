@@ -97,7 +97,7 @@ CompareShardIntervals(const void *leftElement, const void *rightElement,
 	bool rightHasNull = (!rightShardInterval->minValueExists ||
 						 !rightShardInterval->maxValueExists);
 
-	Assert(typeCompareFunction != NULL);
+	Assert(sortContext->finfo != NULL);
 
 	if (leftHasNull && rightHasNull)
 	{

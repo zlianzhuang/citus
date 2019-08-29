@@ -173,15 +173,18 @@ MarkTablesColocated(Oid sourceRelationId, Oid targetRelationId)
 
 		Var *sourceDistributionColumn = DistPartitionKey(sourceRelationId);
 		Oid sourceDistributionColumnType = InvalidOid;
+		Oid sourceDistributionColumnCollation = InvalidOid;
 
 		/* reference tables has NULL distribution column */
 		if (sourceDistributionColumn != NULL)
 		{
 			sourceDistributionColumnType = sourceDistributionColumn->vartype;
+			sourceDistributionColumnCollation = sourceDistributionColumn->varcollid;
 		}
 
 		sourceColocationId = CreateColocationGroup(shardCount, shardReplicationFactor,
-												   sourceDistributionColumnType);
+												   sourceDistributionColumnType,
+												   sourceDistributionColumnCollation);
 		UpdateRelationColocationGroup(sourceRelationId, sourceColocationId);
 	}
 
@@ -439,24 +442,28 @@ CompareShardPlacementsByNode(const void *leftElement, const void *rightElement)
  * colocation id, otherwise it returns INVALID_COLOCATION_ID.
  */
 uint32
-ColocationId(int shardCount, int replicationFactor, Oid distributionColumnType)
+ColocationId(int shardCount, int replicationFactor, Oid distributionColumnType, Oid
+			 distributionColumnCollation)
 {
 	uint32 colocationId = INVALID_COLOCATION_ID;
 	HeapTuple colocationTuple = NULL;
 	SysScanDesc scanDescriptor;
-	const int scanKeyCount = 3;
-	ScanKeyData scanKey[3];
+	const int scanKeyCount = 4;
+	ScanKeyData scanKey[4];
 	bool indexOK = true;
 
 	Relation pgDistColocation = heap_open(DistColocationRelationId(), AccessShareLock);
 
 	/* set scan arguments */
-	ScanKeyInit(&scanKey[0], Anum_pg_dist_colocation_shardcount,
-				BTEqualStrategyNumber, F_INT4EQ, UInt32GetDatum(shardCount));
-	ScanKeyInit(&scanKey[1], Anum_pg_dist_colocation_replicationfactor,
-				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(replicationFactor));
-	ScanKeyInit(&scanKey[2], Anum_pg_dist_colocation_distributioncolumntype,
+	ScanKeyInit(&scanKey[0], Anum_pg_dist_colocation_distributioncolumntype,
 				BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(distributionColumnType));
+	ScanKeyInit(&scanKey[1], Anum_pg_dist_colocation_shardcount,
+				BTEqualStrategyNumber, F_INT4EQ, UInt32GetDatum(shardCount));
+	ScanKeyInit(&scanKey[2], Anum_pg_dist_colocation_replicationfactor,
+				BTEqualStrategyNumber, F_INT4EQ, Int32GetDatum(replicationFactor));
+	ScanKeyInit(&scanKey[3], Anum_pg_dist_colocation_distributioncolumncollation,
+				BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(
+					distributionColumnCollation));
 
 	scanDescriptor = systable_beginscan(pgDistColocation,
 										DistColocationConfigurationIndexId(),
@@ -484,7 +491,8 @@ ColocationId(int shardCount, int replicationFactor, Oid distributionColumnType)
  * colocation id.
  */
 uint32
-CreateColocationGroup(int shardCount, int replicationFactor, Oid distributionColumnType)
+CreateColocationGroup(int shardCount, int replicationFactor, Oid distributionColumnType,
+					  Oid distributionColumnCollation)
 {
 	uint32 colocationId = GetNextColocationId();
 	Relation pgDistColocation = NULL;
@@ -503,6 +511,8 @@ CreateColocationGroup(int shardCount, int replicationFactor, Oid distributionCol
 		UInt32GetDatum(replicationFactor);
 	values[Anum_pg_dist_colocation_distributioncolumntype - 1] =
 		ObjectIdGetDatum(distributionColumnType);
+	values[Anum_pg_dist_colocation_distributioncolumncollation - 1] =
+		ObjectIdGetDatum(distributionColumnCollation);
 
 	/* open colocation relation and insert the new tuple */
 	pgDistColocation = heap_open(DistColocationRelationId(), RowExclusiveLock);
@@ -597,27 +607,23 @@ CheckDistributionColumnType(Oid sourceRelationId, Oid targetRelationId)
 	Var *targetDistributionColumn = NULL;
 	Oid sourceDistributionColumnType = InvalidOid;
 	Oid targetDistributionColumnType = InvalidOid;
+	Oid sourceDistributionColumnCollation = InvalidOid;
+	Oid targetDistributionColumnCollation = InvalidOid;
 
 	/* reference tables have NULL distribution column */
 	sourceDistributionColumn = DistPartitionKey(sourceRelationId);
-	if (sourceDistributionColumn == NULL)
-	{
-		sourceDistributionColumnType = InvalidOid;
-	}
-	else
+	if (sourceDistributionColumn != NULL)
 	{
 		sourceDistributionColumnType = sourceDistributionColumn->vartype;
+		sourceDistributionColumnCollation = sourceDistributionColumn->varcollid;
 	}
 
 	/* reference tables have NULL distribution column */
 	targetDistributionColumn = DistPartitionKey(targetRelationId);
-	if (targetDistributionColumn == NULL)
-	{
-		targetDistributionColumnType = InvalidOid;
-	}
-	else
+	if (targetDistributionColumn != NULL)
 	{
 		targetDistributionColumnType = targetDistributionColumn->vartype;
+		targetDistributionColumnCollation = targetDistributionColumn->varcollid;
 	}
 
 	if (sourceDistributionColumnType != targetDistributionColumnType)
@@ -628,6 +634,18 @@ CheckDistributionColumnType(Oid sourceRelationId, Oid targetRelationId)
 		ereport(ERROR, (errmsg("cannot colocate tables %s and %s",
 							   sourceRelationName, targetRelationName),
 						errdetail("Distribution column types don't match for "
+								  "%s and %s.", sourceRelationName,
+								  targetRelationName)));
+	}
+
+	if (sourceDistributionColumnCollation != targetDistributionColumnCollation)
+	{
+		char *sourceRelationName = get_rel_name(sourceRelationId);
+		char *targetRelationName = get_rel_name(targetRelationId);
+
+		ereport(ERROR, (errmsg("cannot colocate tables %s and %s",
+							   sourceRelationName, targetRelationName),
+						errdetail("Distribution column collations don't match for "
 								  "%s and %s.", sourceRelationName,
 								  targetRelationName)));
 	}

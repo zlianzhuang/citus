@@ -574,18 +574,21 @@ ColocationIdForNewTable(Oid relationId, Var *distributionColumn,
 		Relation pgDistColocation = heap_open(DistColocationRelationId(), ExclusiveLock);
 
 		Oid distributionColumnType = distributionColumn->vartype;
+		Oid distributionColumnCollation = distributionColumn->varcollid;
 		bool createdColocationGroup = false;
 
 		if (pg_strncasecmp(colocateWithTableName, "default", NAMEDATALEN) == 0)
 		{
 			/* check for default colocation group */
 			colocationId = ColocationId(ShardCount, ShardReplicationFactor,
-										distributionColumnType);
+										distributionColumnType,
+										distributionColumnCollation);
 
 			if (colocationId == INVALID_COLOCATION_ID)
 			{
 				colocationId = CreateColocationGroup(ShardCount, ShardReplicationFactor,
-													 distributionColumnType);
+													 distributionColumnType,
+													 distributionColumnCollation);
 				createdColocationGroup = true;
 			}
 		}
