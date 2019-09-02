@@ -31,7 +31,7 @@ typedef struct ShardIntervalCompareFunctionCacheEntry
  */
 typedef struct SortShardIntervalContext
 {
-	FmgrInfo *finfo;
+	FmgrInfo *comparisonFunction;
 	Oid collation;
 } SortShardIntervalContext;
 
@@ -52,7 +52,8 @@ extern ShardInterval * FindShardInterval(Datum partitionColumnValue,
 extern int FindShardIntervalIndex(Datum searchedValue, DistTableCacheEntry *cacheEntry);
 extern int SearchCachedShardInterval(Datum partitionColumnValue,
 									 ShardInterval **shardIntervalCache,
-									 int shardCount, FmgrInfo *compareFunction);
+									 int shardCount, Oid shardIntervalCollation,
+									 FmgrInfo *compareFunction);
 extern bool SingleReplicatedTable(Oid relationId);
 
 

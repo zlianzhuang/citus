@@ -437,9 +437,9 @@ CompareShardPlacementsByNode(const void *leftElement, const void *rightElement)
 
 
 /*
- * ColocationId searches pg_dist_colocation for shard count, replication factor
- * and distribution column type. If a matching entry is found, it returns the
- * colocation id, otherwise it returns INVALID_COLOCATION_ID.
+ * ColocationId searches pg_dist_colocation for shard count, replication factor,
+ * distribution column type, and distribution column collation. If a matching entry
+ * is found, it returns the colocation id, otherwise returns INVALID_COLOCATION_ID.
  */
 uint32
 ColocationId(int shardCount, int replicationFactor, Oid distributionColumnType, Oid

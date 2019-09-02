@@ -198,6 +198,7 @@ static char * AvailableExtensionVersion(void);
 static char * InstalledExtensionVersion(void);
 static bool HasOverlappingShardInterval(ShardInterval **shardIntervalArray,
 										int shardIntervalArrayLength,
+										Oid shardIntervalCollation,
 										FmgrInfo *shardIntervalSortCompareFunction);
 static void InitializeCaches(void);
 static void InitializeDistCache(void);
@@ -1279,6 +1280,7 @@ BuildCachedShardList(DistTableCacheEntry *cacheEntry)
 			cacheEntry->hasOverlappingShardInterval =
 				HasOverlappingShardInterval(sortedShardIntervalArray,
 											shardIntervalArrayLength,
+											cacheEntry->partitionColumn->varcollid,
 											shardIntervalCompareFunction);
 		}
 		else
@@ -1457,6 +1459,7 @@ HasUninitializedShardInterval(ShardInterval **sortedShardIntervalArray, int shar
 static bool
 HasOverlappingShardInterval(ShardInterval **shardIntervalArray,
 							int shardIntervalArrayLength,
+							Oid shardIntervalCollation,
 							FmgrInfo *shardIntervalSortCompareFunction)
 {
 	int shardIndex = 0;
@@ -1480,7 +1483,7 @@ HasOverlappingShardInterval(ShardInterval **shardIntervalArray,
 		Assert(curShardInterval->minValueExists && curShardInterval->maxValueExists);
 
 		comparisonDatum = FunctionCall2Coll(shardIntervalSortCompareFunction,
-											DEFAULT_COLLATION_OID,
+											shardIntervalCollation,
 											lastShardInterval->maxValue,
 											curShardInterval->minValue);
 		comparisonResult = DatumGetInt32(comparisonDatum);
