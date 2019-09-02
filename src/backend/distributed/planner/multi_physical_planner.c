@@ -2501,6 +2501,18 @@ CoPartitionedTables(Oid firstRelationId, Oid secondRelationId)
 		return false;
 	}
 
+
+	/*
+	 * Don't compare unequal types
+	 */
+	if (firstTableCache->partitionColumn->vartype !=
+		secondTableCache->partitionColumn->vartype ||
+		collation != secondTableCache->partitionColumn->varcollid)
+	{
+		return false;
+	}
+
+
 	/*
 	 * If not known to be colocated check if the remaining shards are
 	 * anyway. Do so by comparing the shard interval arrays that are sorted on
