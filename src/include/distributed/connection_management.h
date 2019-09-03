@@ -159,6 +159,7 @@ extern struct MemoryContextData *ConnectionContext;
 
 
 extern void AfterXactConnectionHandling(bool isCommit);
+extern bool AnyConnectionAccessedPlacements(void);
 extern void InitializeConnectionManagement(void);
 
 extern void InitConnParams(void);

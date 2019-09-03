@@ -131,6 +131,7 @@
 #include "commands/dbcommands.h"
 #include "distributed/citus_custom_scan.h"
 #include "distributed/connection_management.h"
+#include "distributed/local_executor.h"
 #include "distributed/multi_client_executor.h"
 #include "distributed/multi_executor.h"
 #include "distributed/multi_physical_planner.h"
@@ -528,9 +529,10 @@ static void CleanUpSessions(DistributedExecution *execution);
 
 static void LockPartitionsForDistributedPlan(DistributedPlan *distributedPlan);
 static void AcquireExecutorShardLocksForExecution(DistributedExecution *execution);
+static void AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *execution,
+														  List *remoteTaskList);
 static bool DistributedExecutionModifiesDatabase(DistributedExecution *execution);
 static bool DistributedPlanModifiesDatabase(DistributedPlan *plan);
-static bool TaskListModifiesDatabase(RowModifyLevel modLevel, List *taskList);
 static bool DistributedExecutionRequiresRollback(DistributedExecution *execution);
 static bool SelectForUpdateOnReferenceTable(RowModifyLevel modLevel, List *taskList);
 static void AssignTasksToConnections(DistributedExecution *execution);
@@ -588,11 +590,11 @@ AdaptiveExecutor(CustomScanState *node)
 	DistributedExecution *execution = NULL;
 	EState *executorState = ScanStateGetExecutorState(scanState);
 	ParamListInfo paramListInfo = executorState->es_param_list_info;
-	Tuplestorestate *tupleStore = NULL;
 	TupleDesc tupleDescriptor = ScanStateGetTupleDescriptor(scanState);
 	bool randomAccess = true;
 	bool interTransactions = false;
 	int targetPoolSize = MaxAdaptiveExecutorPoolSize;
+
 
 	Job *job = distributedPlan->workerJob;
 	List *taskList = job->taskList;
@@ -609,21 +611,58 @@ AdaptiveExecutor(CustomScanState *node)
 
 	ExecuteSubPlans(distributedPlan);
 
-	scanState->tuplestorestate =
-		tuplestore_begin_heap(randomAccess, interTransactions, work_mem);
-	tupleStore = scanState->tuplestorestate;
-
 	if (MultiShardConnectionType == SEQUENTIAL_CONNECTION)
 	{
+		/* defer decision after ExecuteSubPlans() */
 		targetPoolSize = 1;
 	}
 
-	execution = CreateDistributedExecution(distributedPlan->modLevel, taskList,
-										   distributedPlan->hasReturning,
-										   paramListInfo, tupleDescriptor,
-										   tupleStore, targetPoolSize);
+	scanState->tuplestorestate =
+		tuplestore_begin_heap(randomAccess, interTransactions, work_mem);
 
+	execution = CreateDistributedExecution(distributedPlan->modLevel, taskList,
+										   distributedPlan->hasReturning, paramListInfo,
+										   tupleDescriptor,
+										   scanState->tuplestorestate, targetPoolSize);
+
+	/*
+	 * Make sure that we acquire the appropriate locks even if the local tasks
+	 * are going to be executed with local execution.
+	 */
 	StartDistributedExecution(execution);
+
+	if (ShouldExecuteTasksLocally(distributedPlan))
+	{
+		bool localExecutionHappenedInCommand = false;
+		List *remoteTaskList = NULL;
+
+		localExecutionHappenedInCommand = ExecuteLocalTasks(scanState, &remoteTaskList);
+
+		if (list_length(remoteTaskList) == 0)
+		{
+			if (SortReturning && distributedPlan->hasReturning)
+			{
+				SortTupleStore(scanState);
+			}
+
+			Assert(localExecutionHappenedInCommand);
+
+			/*
+			 * Local execution have executed all the required tasks,
+			 * in that case do not need continue.
+			 */
+			return resultSlot;
+		}
+
+		/*
+		 * If there are more tasks/placements to be executed, make sure that the execution
+		 * struct is updated accurately.
+		 */
+		if (localExecutionHappenedInCommand)
+		{
+			AdjustDistributedExecutionAfterLocalExecution(execution, remoteTaskList);
+		}
+	}
 
 	if (ShouldRunTasksSequentially(execution->tasksToExecute))
 	{
@@ -636,7 +675,21 @@ AdaptiveExecutor(CustomScanState *node)
 
 	if (distributedPlan->modLevel != ROW_MODIFY_READONLY)
 	{
-		executorState->es_processed = execution->rowsProcessed;
+		if (!LocalExecutionHappened)
+		{
+			Assert(executorState->es_processed == 0);
+
+			executorState->es_processed = execution->rowsProcessed;
+		}
+		else if (PartitionMethod(distributedPlan->targetRelationId) != DISTRIBUTE_BY_NONE)
+		{
+			/*
+			 * For reference tables we already add rowsProcessed on the local execution,
+			 * this is required to ensure that mixed local/remote executions reports
+			 * the accurate number of rowsProcessed to the user.
+			 */
+			executorState->es_processed += execution->rowsProcessed;
+		}
 	}
 
 	FinishDistributedExecution(execution);
@@ -647,6 +700,28 @@ AdaptiveExecutor(CustomScanState *node)
 	}
 
 	return resultSlot;
+}
+
+
+/*
+ * AdjustDistributedExecutionAfterLocalExecution simply updates the necessary fields of
+ * the distributed execution.
+ */
+static void
+AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *execution,
+											  List *remoteTaskList)
+{
+	/*
+	 * Local execution already stores the  tuples for returning, so we should not
+	 * store again.
+	 */
+	execution->hasReturning = false;
+
+	/* we only need to execute the remote tasks */
+	execution->tasksToExecute = remoteTaskList;
+
+	execution->totalTaskCount = list_length(remoteTaskList);
+	execution->unfinishedTaskCount = list_length(remoteTaskList);
 }
 
 
@@ -704,6 +779,12 @@ ExecuteTaskListExtended(RowModifyLevel modLevel, List *taskList,
 {
 	DistributedExecution *execution = NULL;
 	ParamListInfo paramListInfo = NULL;
+
+	/*
+	 * The code-paths that rely on this function do not know how execute
+	 * commands locally.
+	 */
+	ErrorIfLocalExecutionHappened();
 
 	if (MultiShardConnectionType == SEQUENTIAL_CONNECTION)
 	{
@@ -774,11 +855,20 @@ StartDistributedExecution(DistributedExecution *execution)
 
 	if (MultiShardCommitProtocol != COMMIT_PROTOCOL_BARE)
 	{
-		if (DistributedExecutionRequiresRollback(execution))
+		/*
+		 * In case localExecutionHappened, we simply force the executor to use 2PC.
+		 * The primary motivation is that at this point we're definitely expanding
+		 * the nodes participated in the transaction. And, by re-generating the
+		 * remote task lists during local query execution, we might prevent the adaptive
+		 * executor to kick-in 2PC (or even start coordinated transaction, that's why
+		 * we prefer adding this check here instead of
+		 * Activate2PCIfModifyingTransactionExpandsToNewNode()).
+		 */
+		if (DistributedExecutionRequiresRollback(execution) || LocalExecutionHappened)
 		{
 			BeginOrContinueCoordinatedTransaction();
 
-			if (TaskListRequires2PC(taskList))
+			if (TaskListRequires2PC(taskList) || LocalExecutionHappened)
 			{
 				/*
 				 * Although using two phase commit protocol is an independent decision than
@@ -859,7 +949,7 @@ DistributedPlanModifiesDatabase(DistributedPlan *plan)
  *  TaskListModifiesDatabase is a helper function for DistributedExecutionModifiesDatabase and
  *  DistributedPlanModifiesDatabase.
  */
-static bool
+bool
 TaskListModifiesDatabase(RowModifyLevel modLevel, List *taskList)
 {
 	Task *firstTask = NULL;
@@ -1251,7 +1341,6 @@ AssignTasksToConnections(DistributedExecution *execution)
 
 		shardCommandExecution->expectResults = hasReturning ||
 											   modLevel == ROW_MODIFY_READONLY;
-
 
 		foreach(taskPlacementCell, task->taskPlacementList)
 		{
