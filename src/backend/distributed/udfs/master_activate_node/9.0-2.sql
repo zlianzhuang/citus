@@ -10,7 +10,7 @@ CREATE FUNCTION master_activate_node(nodename text,
                                      OUT isactive bool,
                                      OUT noderole noderole,
                                      OUT nodecluster name,
-                                     OUT shouldhavedata bool)
+                                     OUT isdatanode isdatanode)
     RETURNS record
     LANGUAGE C STRICT
     AS 'MODULE_PATHNAME',$$master_activate_node$$;
