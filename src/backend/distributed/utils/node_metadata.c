@@ -59,8 +59,8 @@ typedef struct NodeMetadata
 	char *nodeRack;
 	bool hasMetadata;
 	bool isActive;
-	bool isDataNode;
 	Oid nodeRole;
+	Oid isDataNode;
 	char *nodeCluster;
 } NodeMetadata;
 
