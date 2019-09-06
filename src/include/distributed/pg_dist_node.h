@@ -30,7 +30,7 @@
 #define Anum_pg_dist_node_isactive 7
 #define Anum_pg_dist_node_noderole 8
 #define Anum_pg_dist_node_nodecluster 9
-#define Anum_pg_dist_node_shouldhavedata 10
+#define Anum_pg_dist_node_isdatanode 10
 
 #define GROUPID_SEQUENCE_NAME "pg_dist_groupid_seq"
 #define NODEID_SEQUENCE_NAME "pg_dist_node_nodeid_seq"
