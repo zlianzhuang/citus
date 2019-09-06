@@ -11,6 +11,8 @@
 #ifndef METADATA_CACHE_H
 #define METADATA_CACHE_H
 
+#include "postgres.h"
+
 #include "fmgr.h"
 #include "distributed/master_metadata_utility.h"
 #include "distributed/pg_dist_partition.h"
@@ -164,6 +166,9 @@ extern Oid CitusTableVisibleFuncId(void);
 extern Oid PrimaryNodeRoleId(void);
 extern Oid SecondaryNodeRoleId(void);
 extern Oid UnavailableNodeRoleId(void);
+extern Oid IsDataNodeTrueId(void);
+extern Oid IsDataNodeFalseId(void);
+extern Oid IsDataNodeMarkedForRemovalId(void);
 extern Oid CitusCopyFormatTypeId(void);
 extern Oid TextCopyFormatId(void);
 extern Oid BinaryCopyFormatId(void);
