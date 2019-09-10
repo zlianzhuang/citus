@@ -79,6 +79,7 @@
 #include "distributed/metadata_cache.h"
 #include "distributed/relation_access_tracking.h"
 #include "distributed/remote_commands.h" /* to access LogRemoteCommands */
+#include "distributed/multi_router_executor.h"
 #include "distributed/transaction_management.h"
 #include "executor/tstoreReceiver.h"
 #include "executor/tuptable.h"
@@ -100,7 +101,6 @@ static void SplitLocalAndRemotePlacements(List *taskPlacementList,
 										  List **localTaskPlacementList,
 										  List **remoteTaskPlacementList);
 static uint64 ExecuteLocalTaskList(CitusScanState *node, List *taskList);
-static Oid * GetParamListOids(ParamListInfo paramList);
 static uint64 ExecuteLocalTaskPlan(CitusScanState *scanState, PlannedStmt *taskPlan,
 								   char *queryString);
 static void LogLocalCommand(const char *command);
@@ -262,12 +262,20 @@ ExecuteLocalTaskList(CitusScanState *node, List *taskList)
 {
 	EState *executorState = ScanStateGetExecutorState(node);
 	ParamListInfo paramListInfo = copyParamList(executorState->es_param_list_info);
-	Oid *paramOids = GetParamListOids(paramListInfo);
-	int numParams = paramListInfo != NULL ? paramListInfo->numParams : 0;
-
+	int numParams = 0;
+	Oid *parameterTypes = NULL;
 	ListCell *taskCell = NULL;
-
 	uint64 totalRowsProcessed = 0;
+
+	if (paramListInfo != NULL)
+	{
+		const char **parameterValues = NULL; /* not used anywhere, so decleare here */
+
+		ExtractParametersFromParamListInfo(paramListInfo, &parameterTypes,
+										   &parameterValues);
+
+		numParams = paramListInfo->numParams;
+	}
 
 	foreach(taskCell, taskList)
 	{
@@ -276,7 +284,7 @@ ExecuteLocalTaskList(CitusScanState *node, List *taskList)
 		PlannedStmt *localPlan = NULL;
 		int cursorOptions = 0;
 		const char *shardQueryString = task->queryString;
-		Query *shardQuery = ParseQueryString(shardQueryString, paramOids, numParams);
+		Query *shardQuery = ParseQueryString(shardQueryString, parameterTypes, numParams);
 
 		/*
 		 * We should not consider using CURSOR_OPT_FORCE_DISTRIBUTED in case of
@@ -302,64 +310,6 @@ ExecuteLocalTaskList(CitusScanState *node, List *taskList)
 	}
 
 	return totalRowsProcessed;
-}
-
-
-/*
- * GetParamListOids gets a ParamListInfo and returns an array of Oids
- * where each element is the Oid of the corresponding Param in the ParamListInfo.
- *
- * If paramList is NULL or doesn't have any parameters, the function returns
- * NULL.
- */
-static Oid *
-GetParamListOids(ParamListInfo paramList)
-{
-	Oid *paramListTypes = NULL;
-	int numParamIndex = 0;
-
-	if (paramList == NULL || paramList->numParams <= 0)
-	{
-		return NULL;
-	}
-
-	paramListTypes = (Oid *) palloc(sizeof(Oid) * paramList->numParams);
-
-	for (numParamIndex = 0; numParamIndex < paramList->numParams; numParamIndex++)
-	{
-		ParamExternData *param;
-
-		/* give hook a chance in case parameter is dynamic */
-		if (paramList->paramFetch != NULL)
-		{
-#if (PG_VERSION_NUM >= 110000)
-			ParamExternData paramData;
-
-			param =
-				paramList->paramFetch(paramList, numParamIndex + 1, false, &paramData);
-#else
-			param = &paramList->params[numParamIndex];
-			if (!OidIsValid(param->ptype))
-			{
-				paramList->paramFetch(paramList, numParamIndex + 1);
-			}
-#endif
-		}
-		else
-		{
-			param = &paramList->params[numParamIndex];
-		}
-
-		if (param->isnull)
-		{
-			paramListTypes[numParamIndex] = InvalidOid;
-			continue;
-		}
-
-		paramListTypes[numParamIndex] = param->ptype;
-	}
-
-	return paramListTypes;
 }
 
 
