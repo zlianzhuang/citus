@@ -102,6 +102,7 @@ static uint64 ExecuteLocalTaskPlan(CitusScanState *scanState, PlannedStmt *taskP
 								   char *queryString);
 static void LogLocalCommand(const char *command);
 
+
 /*
  * ExecuteLocalTasks gets a CitusScanState node and list of local tasks.
  *
@@ -167,17 +168,20 @@ ExecuteLocalTaskList(CitusScanState *node, List *taskList)
 
 
 /*
- * SplitLocalAndRemoteTasks essentially gets a taskList and generates two
+ * ExtractLocalAndRemoteTasks gets a taskList and generates two
  * task lists namely localTaskList and remoteTaskList. The function goes
  * over the input taskList and puts the tasks that are local to the node
- * into localTaskList and the remaining to the remoteTaskList. One slightly
- * different case is modifications to replicated tables (e.g., reference
- * tables) where a single task ends in two seperate tasks and the local
- * task is added to localTaskList and the remanings to the remoteTaskList.
+ * into localTaskList and the remaining to the remoteTaskList. Either of
+ * the lists could be NIL depending on the input taskList.
+ *
+ * One slightly different case is modifications to replicated tables
+ * (e.g., reference tables) where a single task ends in two seperate tasks
+ * and the local task is added to localTaskList and the remanings to the
+ * remoteTaskList.
  */
 void
-SplitLocalAndRemoteTasks(bool readOnly, List *taskList, List **localTaskList,
-						 List **remoteTaskList)
+ExtractLocalAndRemoteTasks(bool readOnly, List *taskList, List **localTaskList,
+						   List **remoteTaskList)
 {
 	ListCell *taskCell = NULL;
 

@@ -537,8 +537,8 @@ static void CleanUpSessions(DistributedExecution *execution);
 
 static void LockPartitionsForDistributedPlan(DistributedPlan *distributedPlan);
 static void AcquireExecutorShardLocksForExecution(DistributedExecution *execution);
-static void AdjustDistributedExecutionAfterLocalExecution(
-	DistributedExecution *execution);
+static void AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *
+														  execution);
 static bool DistributedExecutionModifiesDatabase(DistributedExecution *execution);
 static bool TaskListModifiesDatabase(RowModifyLevel modLevel, List *taskList);
 static bool DistributedExecutionRequiresRollback(DistributedExecution *execution);
@@ -829,7 +829,6 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList, bool hasRetu
 {
 	DistributedExecution *execution =
 		(DistributedExecution *) palloc0(sizeof(DistributedExecution));
-	bool readOnlyPlan = !TaskListModifiesDatabase(modLevel, taskList);
 
 	execution->modLevel = modLevel;
 	execution->tasksToExecute = taskList;
@@ -859,8 +858,10 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList, bool hasRetu
 
 	if (ShouldExecuteTasksLocally(taskList))
 	{
-		SplitLocalAndRemoteTasks(readOnlyPlan, taskList, &execution->localTaskList,
-								 &execution->remoteTaskList);
+		bool readOnlyPlan = !TaskListModifiesDatabase(modLevel, taskList);
+
+		ExtractLocalAndRemoteTasks(readOnlyPlan, taskList, &execution->localTaskList,
+								   &execution->remoteTaskList);
 	}
 
 	return execution;
@@ -2674,6 +2675,7 @@ TransactionStateMachine(WorkerSession *session)
 			}
 		}
 	}
+
 	/* iterate in case we can perform multiple transitions at once */
 	while (transaction->transactionState != currentState);
 }
