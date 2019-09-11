@@ -161,41 +161,6 @@ AfterXactConnectionHandling(bool isCommit)
 
 
 /*
- * AnyConnectionAccessedPlacements goes over all the connections in the ConnectionHash
- * and returns true if any of the connection has any referenced placements. This is
- * useful to detect whether we're in a distirbuted transaction and already executed
- * at least one command that accessed to a placement.
- */
-bool
-AnyConnectionAccessedPlacements(void)
-{
-	HASH_SEQ_STATUS status;
-	ConnectionHashEntry *entry;
-
-	hash_seq_init(&status, ConnectionHash);
-	while ((entry = (ConnectionHashEntry *) hash_seq_search(&status)) != 0)
-	{
-		dlist_iter iter;
-
-		dlist_foreach(iter, entry->connections)
-		{
-			MultiConnection *connection =
-				dlist_container(MultiConnection, connectionNode, iter.cur);
-
-			if (!dlist_is_empty(&connection->referencedPlacements))
-			{
-				hash_seq_term(&status);
-
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
-
-
-/*
  * GetNodeConnection() establishes a connection to remote node, using default
  * user and database.
  *

@@ -1259,3 +1259,16 @@ ColocatedPlacementsHashCompare(const void *a, const void *b, Size keysize)
 		return 0;
 	}
 }
+
+
+/*
+ * AnyConnectionAccessedPlacements simply checks the number of entries in
+ * ConnectionPlacementHash. This is useful to detect whether we're in a
+ * distirbuted transaction and already executed at least one command that
+ * accessed to a placement.
+ */
+bool
+AnyConnectionAccessedPlacements(void)
+{
+	return hash_get_num_entries(ConnectionPlacementHash) > 0;
+}
