@@ -19,8 +19,10 @@ extern bool LogLocalCommands;
 
 extern bool LocalExecutionHappened;
 
-extern bool ExecuteLocalTasks(CitusScanState *node, List **remoteTaskLis);
-extern bool ShouldExecuteTasksLocally(DistributedPlan *distributedPlan);
+extern uint64 ExecuteLocalTaskList(CitusScanState *node, List *taskList);
+extern void SplitLocalAndRemoteTasks(bool readOnlyPlan, List *taskList,
+									 List **localTaskList, List **remoteTaskList);
+extern bool ShouldExecuteTasksLocally(List *taskList);
 extern void ErrorIfLocalExecutionHappened(void);
 extern void DisableLocalExecution(void);
 extern bool AnyTaskAccessesRemoteNode(List *taskList);

@@ -162,7 +162,14 @@ typedef struct DistributedExecution
 	/* the corresponding distributed plan's modLevel */
 	RowModifyLevel modLevel;
 
+	/*
+	 * tasksToExecute contains all the tasks required to finish the execution, and
+	 * it is the union of remoteTaskList and localTaskList. After (if any) local
+	 * tasks are executed, remoteTaskList becomes equivalent of tasksToExecute.
+	 */
 	List *tasksToExecute;
+	List *remoteTaskList;
+	List *localTaskList;
 
 	/* the corresponding distributed plan has RETURNING */
 	bool hasReturning;
@@ -520,6 +527,7 @@ static DistributedExecution * CreateDistributedExecution(RowModifyLevel modLevel
 														 Tuplestorestate *tupleStore,
 														 int targetPoolSize);
 static void StartDistributedExecution(DistributedExecution *execution);
+static void RunLocalExecution(CitusScanState *scanState, DistributedExecution *execution);
 static void RunDistributedExecution(DistributedExecution *execution);
 static bool ShouldRunTasksSequentially(List *taskList);
 static void SequentialRunDistributedExecution(DistributedExecution *execution);
@@ -529,8 +537,8 @@ static void CleanUpSessions(DistributedExecution *execution);
 
 static void LockPartitionsForDistributedPlan(DistributedPlan *distributedPlan);
 static void AcquireExecutorShardLocksForExecution(DistributedExecution *execution);
-static void AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *execution,
-														  List *remoteTaskList);
+static void AdjustDistributedExecutionAfterLocalExecution(
+	DistributedExecution *execution);
 static bool DistributedExecutionModifiesDatabase(DistributedExecution *execution);
 static bool TaskListModifiesDatabase(RowModifyLevel modLevel, List *taskList);
 static bool DistributedExecutionRequiresRollback(DistributedExecution *execution);
@@ -631,37 +639,19 @@ AdaptiveExecutor(CustomScanState *node)
 	 */
 	StartDistributedExecution(execution);
 
-	if (ShouldExecuteTasksLocally(distributedPlan))
+	/* execute tasks local to the node (if any) */
+	if (list_length(execution->localTaskList) > 0)
 	{
-		bool localExecutionHappenedInCommand = false;
-		List *remoteTaskList = NULL;
+		RunLocalExecution(scanState, execution);
 
-		localExecutionHappenedInCommand = ExecuteLocalTasks(scanState, &remoteTaskList);
-
-		if (list_length(remoteTaskList) == 0)
+		if (list_length(execution->remoteTaskList) == 0)
 		{
-			if (SortReturning && distributedPlan->hasReturning)
-			{
-				SortTupleStore(scanState);
-			}
-
-			Assert(localExecutionHappenedInCommand);
-
-			/*
-			 * Local execution have executed all the required tasks,
-			 * in that case do not need continue.
-			 */
+			/* no need to continue */
 			return resultSlot;
 		}
 
-		/*
-		 * If there are more tasks/placements to be executed, make sure that the execution
-		 * struct is updated accurately.
-		 */
-		if (localExecutionHappenedInCommand)
-		{
-			AdjustDistributedExecutionAfterLocalExecution(execution, remoteTaskList);
-		}
+		/* make sure that we only execute remoteTaskList afterwards */
+		AdjustDistributedExecutionAfterLocalExecution(execution);
 	}
 
 	if (ShouldRunTasksSequentially(execution->tasksToExecute))
@@ -704,12 +694,37 @@ AdaptiveExecutor(CustomScanState *node)
 
 
 /*
+ * RunLocalExecution runs the localTaskList in the execution, fills the tuplestore
+ * and sets the es_processed if necessary.
+ *
+ * It also sorts the tuplestore if there are no remote tasks remaining.
+ */
+static void
+RunLocalExecution(CitusScanState *scanState, DistributedExecution *execution)
+{
+	uint64 rowsProcessed = ExecuteLocalTaskList(scanState, execution->localTaskList);
+	EState *executorState = NULL;
+
+	LocalExecutionHappened = true;
+	executorState = ScanStateGetExecutorState(scanState);
+	executorState->es_processed = rowsProcessed;
+
+	if (list_length(execution->remoteTaskList) == 0)
+	{
+		if (SortReturning && execution->hasReturning)
+		{
+			SortTupleStore(scanState);
+		}
+	}
+}
+
+
+/*
  * AdjustDistributedExecutionAfterLocalExecution simply updates the necessary fields of
  * the distributed execution.
  */
 static void
-AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *execution,
-											  List *remoteTaskList)
+AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *execution)
 {
 	/*
 	 * Local execution already stores the  tuples for returning, so we should not
@@ -718,10 +733,10 @@ AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *execution,
 	execution->hasReturning = false;
 
 	/* we only need to execute the remote tasks */
-	execution->tasksToExecute = remoteTaskList;
+	execution->tasksToExecute = execution->remoteTaskList;
 
-	execution->totalTaskCount = list_length(remoteTaskList);
-	execution->unfinishedTaskCount = list_length(remoteTaskList);
+	execution->totalTaskCount = list_length(execution->remoteTaskList);
+	execution->unfinishedTaskCount = list_length(execution->remoteTaskList);
 }
 
 
@@ -807,17 +822,21 @@ ExecuteTaskListExtended(RowModifyLevel modLevel, List *taskList,
  * CreateDistributedExecution creates a distributed execution data structure for
  * a distributed plan.
  */
-DistributedExecution *
+static DistributedExecution *
 CreateDistributedExecution(RowModifyLevel modLevel, List *taskList, bool hasReturning,
 						   ParamListInfo paramListInfo, TupleDesc tupleDescriptor,
 						   Tuplestorestate *tupleStore, int targetPoolSize)
 {
 	DistributedExecution *execution =
 		(DistributedExecution *) palloc0(sizeof(DistributedExecution));
+	bool readOnlyPlan = !TaskListModifiesDatabase(modLevel, taskList);
 
 	execution->modLevel = modLevel;
 	execution->tasksToExecute = taskList;
 	execution->hasReturning = hasReturning;
+
+	execution->localTaskList = NIL;
+	execution->remoteTaskList = NIL;
 
 	execution->executionStats =
 		(DistributedExecutionStats *) palloc0(sizeof(DistributedExecutionStats));
@@ -837,6 +856,12 @@ CreateDistributedExecution(RowModifyLevel modLevel, List *taskList, bool hasRetu
 
 	execution->connectionSetChanged = false;
 	execution->waitFlagsChanged = false;
+
+	if (ShouldExecuteTasksLocally(taskList))
+	{
+		SplitLocalAndRemoteTasks(readOnlyPlan, taskList, &execution->localTaskList,
+								 &execution->remoteTaskList);
+	}
 
 	return execution;
 }

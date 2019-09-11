@@ -95,49 +95,74 @@ bool LogLocalCommands = false;
 bool LocalExecutionHappened = false;
 
 
-static void SplitLocalAndRemoteTasks(bool readOnlyPlan, List *taskList,
-									 List **localTaskList, List **remoteTaskList);
 static void SplitLocalAndRemotePlacements(List *taskPlacementList,
 										  List **localTaskPlacementList,
 										  List **remoteTaskPlacementList);
-static uint64 ExecuteLocalTaskList(CitusScanState *node, List *taskList);
 static uint64 ExecuteLocalTaskPlan(CitusScanState *scanState, PlannedStmt *taskPlan,
 								   char *queryString);
 static void LogLocalCommand(const char *command);
 
-
 /*
- * ExecuteLocalTasks gets a CitusScanState node and executes any tasks that are
- * local to the node executing the query.
+ * ExecuteLocalTasks gets a CitusScanState node and list of local tasks.
  *
- * The function returns true if at least one task has been locally executed. The
- * function also fills the remoteTaskList so that the caller (e.g., adaptive executor)
- * can continue with executing the remote tasks.
+ * The function goes over the task list and executes them locally.
+ * The returning tuples (if any) is stored in the CitusScanState.
+ *
+ * The function returns totalRowsProcessed.
  */
-bool
-ExecuteLocalTasks(CitusScanState *node, List **remoteTaskList)
+uint64
+ExecuteLocalTaskList(CitusScanState *node, List *taskList)
 {
 	EState *executorState = ScanStateGetExecutorState(node);
-	DistributedPlan *distributedPlan = node->distributedPlan;
-	bool readOnlyPlan = false;
-	Job *job = distributedPlan->workerJob;
-	List *taskList = job->taskList;
-	List *localTaskList = NIL;
-	uint64 rowProcessed = 0;
+	ParamListInfo paramListInfo = copyParamList(executorState->es_param_list_info);
+	int numParams = 0;
+	Oid *parameterTypes = NULL;
+	ListCell *taskCell = NULL;
+	uint64 totalRowsProcessed = 0;
 
-	*remoteTaskList = NIL;
+	if (paramListInfo != NULL)
+	{
+		const char **parameterValues = NULL; /* not used anywhere, so decleare here */
 
-	readOnlyPlan = !DistributedPlanModifiesDatabase(distributedPlan);
+		ExtractParametersFromParamListInfo(paramListInfo, &parameterTypes,
+										   &parameterValues);
 
-	SplitLocalAndRemoteTasks(readOnlyPlan, taskList, &localTaskList, remoteTaskList);
-	rowProcessed = ExecuteLocalTaskList(node, localTaskList);
+		numParams = paramListInfo->numParams;
+	}
 
-	/* we already filtered SELECTs when calculating rowProcessed */
-	executorState->es_processed = rowProcessed;
+	foreach(taskCell, taskList)
+	{
+		Task *task = (Task *) lfirst(taskCell);
 
-	LocalExecutionHappened = true;
+		PlannedStmt *localPlan = NULL;
+		int cursorOptions = 0;
+		const char *shardQueryString = task->queryString;
+		Query *shardQuery = ParseQueryString(shardQueryString, parameterTypes, numParams);
 
-	return list_length(localTaskList) > 0;
+		/*
+		 * We should not consider using CURSOR_OPT_FORCE_DISTRIBUTED in case of
+		 * intermediate results in the query. That'd trigger ExecuteLocalTaskPlan()
+		 * go through the distributed executor, which we do not want since the
+		 * query is already known to be local.
+		 */
+		cursorOptions = 0;
+
+		/*
+		 * Altough the shardQuery is local to this node, we prefer planner()
+		 * over standard_planner(). The primary reason for that is Citus itself
+		 * is not very tolarent standard_planner() calls that doesn't go through
+		 * distributed_planner() because of the way that restriction hooks are
+		 * implemented. So, let planner to call distributed_planner() which
+		 * eventually calls standard_planner().
+		 */
+		localPlan = planner(shardQuery, cursorOptions, paramListInfo);
+
+		LogLocalCommand(shardQueryString);
+
+		totalRowsProcessed += ExecuteLocalTaskPlan(node, localPlan, task->queryString);
+	}
+
+	return totalRowsProcessed;
 }
 
 
@@ -150,7 +175,7 @@ ExecuteLocalTasks(CitusScanState *node, List **remoteTaskList)
  * tables) where a single task ends in two seperate tasks and the local
  * task is added to localTaskList and the remanings to the remoteTaskList.
  */
-static void
+void
 SplitLocalAndRemoteTasks(bool readOnly, List *taskList, List **localTaskList,
 						 List **remoteTaskList)
 {
@@ -252,68 +277,6 @@ SplitLocalAndRemotePlacements(List *taskPlacementList, List **localTaskPlacement
 
 
 /*
- * ExecuteLocalTaskList goes over the task list and executes them locally.
- * The returning tuples (if any) is stored in the CitusScanState.
- *
- * The function returns totalRowsProcessed.
- */
-static uint64
-ExecuteLocalTaskList(CitusScanState *node, List *taskList)
-{
-	EState *executorState = ScanStateGetExecutorState(node);
-	ParamListInfo paramListInfo = copyParamList(executorState->es_param_list_info);
-	int numParams = 0;
-	Oid *parameterTypes = NULL;
-	ListCell *taskCell = NULL;
-	uint64 totalRowsProcessed = 0;
-
-	if (paramListInfo != NULL)
-	{
-		const char **parameterValues = NULL; /* not used anywhere, so decleare here */
-
-		ExtractParametersFromParamListInfo(paramListInfo, &parameterTypes,
-										   &parameterValues);
-
-		numParams = paramListInfo->numParams;
-	}
-
-	foreach(taskCell, taskList)
-	{
-		Task *task = (Task *) lfirst(taskCell);
-
-		PlannedStmt *localPlan = NULL;
-		int cursorOptions = 0;
-		const char *shardQueryString = task->queryString;
-		Query *shardQuery = ParseQueryString(shardQueryString, parameterTypes, numParams);
-
-		/*
-		 * We should not consider using CURSOR_OPT_FORCE_DISTRIBUTED in case of
-		 * intermediate results in the query. That'd trigger ExecuteLocalTaskPlan()
-		 * go through the distributed executor, which we do not want since the
-		 * query is already known to be local.
-		 */
-		cursorOptions = 0;
-
-		/*
-		 * Altough the shardQuery is local to this node, we prefer planner()
-		 * over standard_planner(). The primary reason for that is Citus itself
-		 * is not very tolarent standard_planner() calls that doesn't go through
-		 * distributed_planner() because of the way that restriction hooks are
-		 * implemented. So, let planner to call distributed_planner() which
-		 * eventually calls standard_planner().
-		 */
-		localPlan = planner(shardQuery, cursorOptions, paramListInfo);
-
-		LogLocalCommand(shardQueryString);
-
-		totalRowsProcessed += ExecuteLocalTaskPlan(node, localPlan, task->queryString);
-	}
-
-	return totalRowsProcessed;
-}
-
-
-/*
  * ExecuteLocalTaskPlan gets a planned statement which can be executed locally.
  * The function simply follows the steps to have a local execution, sets the
  * tupleStore if necessary. The function returns the
@@ -366,14 +329,13 @@ ExecuteLocalTaskPlan(CitusScanState *scanState, PlannedStmt *taskPlan, char *que
 
 
 /*
- *  ShouldExecuteTasksLocally gets a distributed plan and returns true if the
- *  plan should be executed locally. This function does not guarantee that any
- *  task have to be executed locally.
+ *  ShouldExecuteTasksLocally gets a task list and returns true if the
+ *  any of the tasks should be executed locally. This function does not
+ *  guarantee that any task have to be executed locally.
  */
 bool
-ShouldExecuteTasksLocally(DistributedPlan *distributedPlan)
+ShouldExecuteTasksLocally(List *taskList)
 {
-	List *taskList = NIL;
 	bool singleTask = false;
 
 	if (!EnableLocalExecution)
@@ -409,7 +371,6 @@ ShouldExecuteTasksLocally(DistributedPlan *distributedPlan)
 		return true;
 	}
 
-	taskList = distributedPlan->workerJob->taskList;
 	singleTask = (list_length(taskList) == 1);
 	if (singleTask && TaskAccessLocalNode((Task *) linitial(taskList)))
 	{
