@@ -665,7 +665,7 @@ AdaptiveExecutor(CustomScanState *node)
 
 	if (distributedPlan->modLevel != ROW_MODIFY_READONLY)
 	{
-		if (!LocalExecutionHappened)
+		if (list_length(execution->localTaskList) == 0)
 		{
 			Assert(executorState->es_processed == 0);
 

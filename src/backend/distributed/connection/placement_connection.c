@@ -1270,5 +1270,8 @@ ColocatedPlacementsHashCompare(const void *a, const void *b, Size keysize)
 bool
 AnyConnectionAccessedPlacements(void)
 {
+	/* this is initialized on PG_INIT */
+	Assert (ConnectionPlacementHash != NULL);
+
 	return hash_get_num_entries(ConnectionPlacementHash) > 0;
 }
