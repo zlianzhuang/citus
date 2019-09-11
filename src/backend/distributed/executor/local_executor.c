@@ -347,12 +347,6 @@ ShouldExecuteTasksLocally(List *taskList)
 		return false;
 	}
 
-	if (GetLocalGroupId() == 0)
-	{
-		/* currently local execution is only supported on metadata workers */
-		return false;
-	}
-
 	if (LocalExecutionHappened)
 	{
 		/*
