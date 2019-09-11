@@ -2675,7 +2675,6 @@ TransactionStateMachine(WorkerSession *session)
 			}
 		}
 	}
-
 	/* iterate in case we can perform multiple transitions at once */
 	while (transaction->transactionState != currentState);
 }

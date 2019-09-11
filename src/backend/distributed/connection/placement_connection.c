@@ -1271,7 +1271,7 @@ bool
 AnyConnectionAccessedPlacements(void)
 {
 	/* this is initialized on PG_INIT */
-	Assert (ConnectionPlacementHash != NULL);
+	Assert(ConnectionPlacementHash != NULL);
 
 	return hash_get_num_entries(ConnectionPlacementHash) > 0;
 }
