@@ -207,7 +207,7 @@ CreateRemoteFileDestReceiver(char *resultId, EState *executorState,
 	/* set up output parameters */
 	resultDest->resultId = resultId;
 	resultDest->executorState = executorState;
-	resultDest->initialNodeList = initialNodeList;
+	resultDest->initialNodeList = writeLocalFile ? NIL : initialNodeList;
 	resultDest->memoryContext = CurrentMemoryContext;
 	resultDest->writeLocalFile = writeLocalFile;
 
@@ -393,12 +393,15 @@ RemoteFileDestReceiverReceive(TupleTableSlot *slot, DestReceiver *dest)
 					  copyOutState, columnOutputFunctions, NULL);
 
 	/* send row to nodes */
-	BroadcastCopyData(copyData, connectionList);
 
 	/* write to local file (if applicable) */
 	if (resultDest->writeLocalFile)
 	{
 		WriteToLocalFile(copyOutState->fe_msgbuf, &resultDest->fileCompat);
+	}
+	else
+	{
+		BroadcastCopyData(copyData, connectionList);
 	}
 
 	MemoryContextSwitchTo(oldContext);
@@ -446,20 +449,27 @@ RemoteFileDestReceiverShutdown(DestReceiver *destReceiver)
 		/* send footers when using binary encoding */
 		resetStringInfo(copyOutState->fe_msgbuf);
 		AppendCopyBinaryFooters(copyOutState);
-		BroadcastCopyData(copyOutState->fe_msgbuf, connectionList);
+
 
 		if (resultDest->writeLocalFile)
 		{
 			WriteToLocalFile(copyOutState->fe_msgbuf, &resultDest->fileCompat);
 		}
+		else
+		{
+			BroadcastCopyData(copyOutState->fe_msgbuf, connectionList);
+		}
 	}
 
 	/* close the COPY input */
-	EndRemoteCopy(0, connectionList);
 
 	if (resultDest->writeLocalFile)
 	{
 		FileClose(resultDest->fileCompat.fd);
+	}
+	else
+	{
+		EndRemoteCopy(0, connectionList);
 	}
 }
 

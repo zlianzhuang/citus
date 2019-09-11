@@ -390,7 +390,12 @@ ShouldExecuteTasksLocally(List *taskList)
 		 * has happened because that'd break transaction visibility rules and
 		 * many other things.
 		 */
-		return !AnyConnectionAccessedPlacements();
+		Query *taskQuery = ParseQueryString(((Task *) linitial(taskList))->queryString,
+											NULL, 0);
+
+
+		return !AnyConnectionAccessedPlacements() || !QueryContainsDistributedTableRTE(
+			taskQuery);
 	}
 
 	if (!singleTask)

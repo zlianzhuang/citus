@@ -37,11 +37,28 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	ListCell *subPlanCell = NULL;
 	List *nodeList = NIL;
 	bool writeLocalFile = false;
+	List *taskList = distributedPlan->workerJob->taskList;
 
 	if (subPlanList == NIL)
 	{
 		/* no subplans to execute */
 		return;
+	}
+
+	if (list_length(taskList) == 1 && list_length(subPlanList) == 1)
+	{
+		writeLocalFile = true;
+
+		Task *task = (Task *) linitial(taskList);
+		Query *taskQuery = ParseQueryString(task->queryString, NULL, 0);
+
+		if (!QueryContainsDistributedTableRTE(taskQuery) &&
+			list_length(task->taskPlacementList) == 1)
+		{
+			ShardPlacement *taskPlacement = linitial(task->taskPlacementList);
+
+			taskPlacement->groupId = GetLocalGroupId();
+		}
 	}
 
 	/*
