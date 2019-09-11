@@ -532,7 +532,7 @@ static void AcquireExecutorShardLocksForExecution(DistributedExecution *executio
 static void AdjustDistributedExecutionAfterLocalExecution(DistributedExecution *execution,
 														  List *remoteTaskList);
 static bool DistributedExecutionModifiesDatabase(DistributedExecution *execution);
-static bool DistributedPlanModifiesDatabase(DistributedPlan *plan);
+static bool TaskListModifiesDatabase(RowModifyLevel modLevel, List *taskList);
 static bool DistributedExecutionRequiresRollback(DistributedExecution *execution);
 static bool SelectForUpdateOnReferenceTable(RowModifyLevel modLevel, List *taskList);
 static void AssignTasksToConnections(DistributedExecution *execution);
@@ -938,7 +938,7 @@ DistributedExecutionModifiesDatabase(DistributedExecution *execution)
  *  DistributedPlanModifiesDatabase returns true if the plan modifies the data
  *  or the schema.
  */
-static bool
+bool
 DistributedPlanModifiesDatabase(DistributedPlan *plan)
 {
 	return TaskListModifiesDatabase(plan->modLevel, plan->workerJob->taskList);
@@ -949,7 +949,7 @@ DistributedPlanModifiesDatabase(DistributedPlan *plan)
  *  TaskListModifiesDatabase is a helper function for DistributedExecutionModifiesDatabase and
  *  DistributedPlanModifiesDatabase.
  */
-bool
+static bool
 TaskListModifiesDatabase(RowModifyLevel modLevel, List *taskList)
 {
 	Task *firstTask = NULL;

@@ -61,7 +61,7 @@ extern void ExecutePlanIntoDestReceiver(PlannedStmt *queryPlan, ParamListInfo pa
 extern void SetLocalMultiShardModifyModeToSequential(void);
 extern void SetLocalForceMaxQueryParallelization(void);
 extern void SortTupleStore(CitusScanState *scanState);
-extern bool TaskListModifiesDatabase(RowModifyLevel modLevel, List *taskList);
+extern bool DistributedPlanModifiesDatabase(DistributedPlan *plan);
 
 
 #endif /* MULTI_EXECUTOR_H */

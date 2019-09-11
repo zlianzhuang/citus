@@ -127,7 +127,7 @@ ExecuteLocalTasks(CitusScanState *node, List **remoteTaskList)
 
 	*remoteTaskList = NIL;
 
-	readOnlyPlan = !TaskListModifiesDatabase(distributedPlan->modLevel, taskList);
+	readOnlyPlan = !DistributedPlanModifiesDatabase(distributedPlan);
 
 	SplitLocalAndRemoteTasks(readOnlyPlan, taskList, &localTaskList, remoteTaskList);
 	rowProcessed = ExecuteLocalTaskList(node, localTaskList);
