@@ -153,6 +153,7 @@ workflows:
     jobs:
       - build
       - check-style
+      - check-sql-snapshots
 
       - {test-10_check-multi: {requires: [build]}}
       - {test-10_check-tt-van-mx: {requires: [build]}}
