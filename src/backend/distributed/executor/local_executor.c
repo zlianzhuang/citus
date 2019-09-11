@@ -100,6 +100,7 @@ static void SplitLocalAndRemotePlacements(List *taskPlacementList,
 										  List **remoteTaskPlacementList);
 static uint64 ExecuteLocalTaskPlan(CitusScanState *scanState, PlannedStmt *taskPlan,
 								   char *queryString);
+static bool TaskAccessesLocalNode(Task *task);
 static void LogLocalCommand(const char *command);
 
 
@@ -112,9 +113,9 @@ static void LogLocalCommand(const char *command);
  * The function returns totalRowsProcessed.
  */
 uint64
-ExecuteLocalTaskList(CitusScanState *node, List *taskList)
+ExecuteLocalTaskList(CitusScanState *scanState, List *taskList)
 {
-	EState *executorState = ScanStateGetExecutorState(node);
+	EState *executorState = ScanStateGetExecutorState(scanState);
 	ParamListInfo paramListInfo = copyParamList(executorState->es_param_list_info);
 	int numParams = 0;
 	Oid *parameterTypes = NULL;
@@ -160,7 +161,7 @@ ExecuteLocalTaskList(CitusScanState *node, List *taskList)
 
 		LogLocalCommand(shardQueryString);
 
-		totalRowsProcessed += ExecuteLocalTaskPlan(node, localPlan, task->queryString);
+		totalRowsProcessed += ExecuteLocalTaskPlan(scanState, localPlan, task->queryString);
 	}
 
 	return totalRowsProcessed;
@@ -370,7 +371,7 @@ ShouldExecuteTasksLocally(List *taskList)
 	}
 
 	singleTask = (list_length(taskList) == 1);
-	if (singleTask && TaskAccessLocalNode((Task *) linitial(taskList)))
+	if (singleTask && TaskAccessesLocalNode((Task *) linitial(taskList)))
 	{
 		/*
 		 * This is the valuable time to use the local execution. We are likely
@@ -409,11 +410,11 @@ ShouldExecuteTasksLocally(List *taskList)
 
 
 /*
- * TaskAccessLocalNode returns true if any placements of the task reside on the
+ * TaskAccessesLocalNode returns true if any placements of the task reside on the
  * node that we're executing the query.
  */
-bool
-TaskAccessLocalNode(Task *task)
+static bool
+TaskAccessesLocalNode(Task *task)
 {
 	ListCell *placementCell = NULL;
 	int localGroupId = GetLocalGroupId();
@@ -475,9 +476,9 @@ LogLocalCommand(const char *command)
 
 
 /*
- * SetLocalForceMaxQueryParallelization simply a C interface for
+ * DisableLocalExecution simply a C interface for
  * setting the following:
- *      SET LOCAL citus.multi_shard_modify_mode TO on;
+ *      SET LOCAL citus.enable_local_execution TO off;
  */
 void
 DisableLocalExecution(void)
