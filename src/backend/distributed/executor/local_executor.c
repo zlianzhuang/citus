@@ -161,7 +161,8 @@ ExecuteLocalTaskList(CitusScanState *scanState, List *taskList)
 
 		LogLocalCommand(shardQueryString);
 
-		totalRowsProcessed += ExecuteLocalTaskPlan(scanState, localPlan, task->queryString);
+		totalRowsProcessed +=
+			ExecuteLocalTaskPlan(scanState, localPlan, task->queryString);
 	}
 
 	return totalRowsProcessed;
