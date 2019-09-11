@@ -22,6 +22,7 @@
 #include "access/htup_details.h"
 #include "access/sysattr.h"
 #include "access/xact.h"
+#include "catalog/pg_collation.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_foreign_server.h"
@@ -1098,6 +1099,105 @@ SequenceDDLCommandsForTable(Oid relationId)
 
 
 /*
+ * CreateCollationDDLCommand returns a "CREATE COLLATION..." SQL string for creating the
+ * given collation if not exists.
+ */
+List *
+CreateCollationDDLCommand(Oid collationId)
+{
+	List *result = NIL;
+	char *schemaName = NULL;
+	StringInfoData collationNameDef;
+	const char *quotedCollationName = NULL;
+	const char *providerString = NULL;
+	HeapTuple heapTuple = NULL;
+	Form_pg_collation collationForm = NULL;
+	char collprovider;
+	int32 collencoding;
+	const char *collcollate;
+	const char *collctype;
+	const char *collname;
+	Oid collnamespace;
+	Oid collowner;
+#if PG_VERSION_NUM >= 120000
+	bool collisdeterministic;
+#endif
+
+	heapTuple = SearchSysCache1(COLLOID, ObjectIdGetDatum(collationId));
+	if (!HeapTupleIsValid(heapTuple))
+	{
+		elog(ERROR, "citus cache lookup failed for collation %u", collationId);
+	}
+
+	collationForm = (Form_pg_collation) GETSTRUCT(heapTuple);
+	collprovider = collationForm->collprovider;
+	collcollate = NameStr(collationForm->collcollate);
+	collctype = NameStr(collationForm->collctype);
+	collnamespace = collationForm->collnamespace;
+	collowner = collationForm->collowner;
+	collname = NameStr(collationForm->collname);
+	collencoding = collationForm->collencoding;
+#if PG_VERSION_NUM >= 120000
+	collisdeterministic = collationForm->collisdeterministic;
+#endif
+
+	ReleaseSysCache(heapTuple);
+	schemaName = get_namespace_name(collnamespace);
+	quotedCollationName = quote_qualified_identifier(schemaName, collname);
+	providerString =
+		collprovider == COLLPROVIDER_DEFAULT ? "default" :
+		collprovider == COLLPROVIDER_ICU ? "icu" :
+		collprovider == COLLPROVIDER_LIBC ? "libc" : NULL;
+
+	if (providerString == NULL)
+	{
+		elog(ERROR, "unknown collation provider: %c", collprovider);
+	}
+
+	initStringInfo(&collationNameDef);
+	appendStringInfo(&collationNameDef,
+					 "CREATE COLLATION %s (provider = '%s'",
+					 quotedCollationName, providerString);
+
+	if (strcmp(collcollate, collctype))
+	{
+		appendStringInfo(&collationNameDef,
+						 ", locale = %s",
+						 quote_literal_cstr(collcollate));
+	}
+	else
+	{
+		appendStringInfo(&collationNameDef,
+						 ", lc_collate = %s, lc_ctype = %s",
+						 quote_literal_cstr(collcollate),
+						 quote_literal_cstr(collctype));
+	}
+
+#if PG_VERSION_NUM >= 120000
+	if (!collisdeterministic)
+	{
+		appendStringInfoString(&collationNameDef, ", deterministic = false");
+	}
+#endif
+
+
+	appendStringInfoChar(&collationNameDef, ')');
+
+	result = lappend(result, collationNameDef.data);
+
+	initStringInfo(&collationNameDef);
+	appendStringInfo(&collationNameDef,
+					 "ALTER COLLATION %s OWNER TO %s",
+					 quotedCollationName,
+					 quote_identifier(GetUserNameFromId(collowner, false)));
+
+	result = lappend(result, collationNameDef.data);
+
+	return result;
+}
+
+
+/*
  * CreateSchemaDDLCommand returns a "CREATE SCHEMA..." SQL string for creating the given
  * schema if not exists and with proper authorization.
  */
@@ -1105,7 +1205,7 @@ char *
 CreateSchemaDDLCommand(Oid schemaId)
 {
 	char *schemaName = get_namespace_name(schemaId);
-	StringInfo schemaNameDef = NULL;
+	StringInfoData schemaNameDef;
 	const char *ownerName = NULL;
 	const char *quotedSchemaName = NULL;
 
@@ -1114,12 +1214,12 @@ CreateSchemaDDLCommand(Oid schemaId)
 		return NULL;
 	}
 
-	schemaNameDef = makeStringInfo();
+	initStringInfo(&schemaNameDef);
 	quotedSchemaName = quote_identifier(schemaName);
 	ownerName = quote_identifier(SchemaOwnerName(schemaId));
-	appendStringInfo(schemaNameDef, CREATE_SCHEMA_COMMAND, quotedSchemaName, ownerName);
+	appendStringInfo(&schemaNameDef, CREATE_SCHEMA_COMMAND, quotedSchemaName, ownerName);
 
-	return schemaNameDef->data;
+	return schemaNameDef.data;
 }
 
 

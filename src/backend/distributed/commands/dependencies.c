@@ -144,6 +144,11 @@ GetDependencyCreateDDLCommands(const ObjectAddress *dependency)
 {
 	switch (getObjectClass(dependency))
 	{
+		case OCLASS_COLLATION:
+		{
+			return CreateCollationDDLCommand(dependency->objectId);
+		}
+
 		case OCLASS_SCHEMA:
 		{
 			const char *schemaDDLCommand = CreateSchemaDDLCommand(dependency->objectId);

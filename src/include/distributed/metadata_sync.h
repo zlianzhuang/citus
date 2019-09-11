@@ -45,6 +45,7 @@ extern char * NodeDeleteCommand(uint32 nodeId);
 extern char * NodeStateUpdateCommand(uint32 nodeId, bool isActive);
 extern char * ShouldHaveShardsUpdateCommand(uint32 nodeId, bool shouldHaveShards);
 extern char * ColocationIdUpdateCommand(Oid relationId, uint32 colocationId);
+extern List * CreateCollationDDLCommandList(Oid collationId);
 extern char * CreateSchemaDDLCommand(Oid schemaId);
 extern char * PlacementUpsertCommand(uint64 shardId, uint64 placementId, int shardState,
 									 uint64 shardLength, int32 groupId);
