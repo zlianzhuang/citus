@@ -92,11 +92,14 @@ PG_FUNCTION_INFO_V1(master_initialize_node_metadata);
 PG_FUNCTION_INFO_V1(get_shard_id_for_distribution_column);
 
 
+/*
+ * DefaultNodeMetadata creates a NodeMetadata struct with the fields set to
+ * sane defaults, e.g. nodeRack = WORKER_DEFAULT_RACK.
+ */
 static NodeMetadata
 DefaultNodeMetadata()
 {
 	NodeMetadata nodeMetadata = {
-		.nodeRole = InvalidOid,
 		.nodeRack = WORKER_DEFAULT_RACK,
 	};
 	return nodeMetadata;
