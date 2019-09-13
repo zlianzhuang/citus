@@ -15,7 +15,7 @@ SELECT 1 FROM master_add_node('localhost', :worker_2_port);
 SELECT master_get_active_worker_nodes();
 
 -- try to add a node that is already in the cluster
-SELECT * FROM master_add_node('localhost', :worker_1_port);
+SELECT nodeid, groupid FROM master_add_node('localhost', :worker_1_port);
 
 -- get the active nodes
 SELECT master_get_active_worker_nodes();
@@ -35,7 +35,7 @@ SELECT master_get_active_worker_nodes();
 SET citus.shard_count TO 16;
 SET citus.shard_replication_factor TO 1;
 
-SELECT * FROM master_activate_node('localhost', :worker_2_port);
+SELECT isactive FROM master_activate_node('localhost', :worker_2_port);
 CREATE TABLE cluster_management_test (col_1 text, col_2 int);
 SELECT create_distributed_table('cluster_management_test', 'col_1', 'hash');
 
@@ -95,7 +95,7 @@ ABORT;
 SELECT master_get_active_worker_nodes();
 
 -- restore the node for next tests
-SELECT * FROM master_activate_node('localhost', :worker_2_port);
+SELECT isactive FROM master_activate_node('localhost', :worker_2_port);
 
 -- try to remove a node with active placements and see that node removal is failed
 SELECT master_remove_node('localhost', :worker_2_port); 
@@ -122,8 +122,7 @@ DELETE FROM pg_dist_node WHERE nodeport=:worker_2_port;
 SELECT * FROM cluster_management_test;
 
 -- clean-up
-SELECT master_add_node('localhost', :worker_2_port) AS new_node \gset
-SELECT groupid AS new_group FROM pg_dist_node WHERE nodeid = :new_node \gset
+SELECT groupid as new_group FROM master_add_node('localhost', :worker_2_port) \gset
 UPDATE pg_dist_placement SET groupid = :new_group WHERE groupid = :worker_2_group;
 
 -- test that you are allowed to remove secondary nodes even if there are placements
