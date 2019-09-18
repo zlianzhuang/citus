@@ -209,6 +209,13 @@ AlterOwnerStmtObjectAddress(AlterOwnerStmt *stmt, bool missing_ok)
 {
 	switch (stmt->objectType)
 	{
+		case OBJECT_COLLATION:
+		{
+			ObjectAddress *address = palloc(sizeof(ObjectAddress));
+			*address = AlterCollationOwnerObjectAddress(stmt);
+			return address;
+		}
+
 		case OBJECT_TYPE:
 		{
 			return AlterTypeOwnerObjectAddress(stmt, missing_ok);

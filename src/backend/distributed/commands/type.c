@@ -99,7 +99,6 @@ static CreateEnumStmt * RecreateEnumStmt(Oid typeOid);
 static List * EnumValsList(Oid typeOid);
 
 static bool ShouldPropagateTypeCreate(void);
-static bool ShouldPropagateAlterType(const ObjectAddress *address);
 
 
 /*
@@ -211,7 +210,7 @@ PlanAlterTypeStmt(AlterTableStmt *stmt, const char *queryString)
 	Assert(stmt->relkind == OBJECT_TYPE);
 
 	typeAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
-	if (!ShouldPropagateAlterType(typeAddress))
+	if (!ShouldPropagateObject(typeAddress))
 	{
 		return NIL;
 	}
@@ -333,7 +332,7 @@ PlanAlterEnumStmt(AlterEnumStmt *stmt, const char *queryString)
 	List *commands = NIL;
 
 	typeAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
-	if (!ShouldPropagateAlterType(typeAddress))
+	if (!ShouldPropagateObject(typeAddress))
 	{
 		return NIL;
 	}
@@ -401,7 +400,7 @@ ProcessAlterEnumStmt(AlterEnumStmt *stmt, const char *queryString)
 	const ObjectAddress *typeAddress = NULL;
 
 	typeAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
-	if (!ShouldPropagateAlterType(typeAddress))
+	if (!ShouldPropagateObject(typeAddress))
 	{
 		return;
 	}
@@ -474,20 +473,8 @@ PlanDropTypeStmt(DropStmt *stmt, const char *queryString)
 	List *distributedTypeAddresses = NIL;
 	List *commands = NIL;
 
-	if (creating_extension)
+	if (!ShouldPropagate())
 	{
-		/*
-		 * extensions should be created separately on the workers, types cascading from an
-		 * extension should therefor not be propagated here.
-		 */
-		return NIL;
-	}
-
-	if (!EnableDependencyCreation)
-	{
-		/*
-		 * we are configured to disable object propagation, should not propagate anything
-		 */
 		return NIL;
 	}
 
@@ -550,7 +537,7 @@ PlanRenameTypeStmt(RenameStmt *stmt, const char *queryString)
 	List *commands = NIL;
 
 	typeAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
-	if (!ShouldPropagateAlterType(typeAddress))
+	if (!ShouldPropagateObject(typeAddress))
 	{
 		return NIL;
 	}
@@ -590,7 +577,7 @@ PlanRenameTypeAttributeStmt(RenameStmt *stmt, const char *queryString)
 	Assert(stmt->relationType == OBJECT_TYPE);
 
 	typeAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
-	if (!ShouldPropagateAlterType(typeAddress))
+	if (!ShouldPropagateObject(typeAddress))
 	{
 		return NIL;
 	}
@@ -624,7 +611,7 @@ PlanAlterTypeSchemaStmt(AlterObjectSchemaStmt *stmt, const char *queryString)
 	Assert(stmt->objectType == OBJECT_TYPE);
 
 	typeAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
-	if (!ShouldPropagateAlterType(typeAddress))
+	if (!ShouldPropagateObject(typeAddress))
 	{
 		return NIL;
 	}
@@ -657,7 +644,7 @@ ProcessAlterTypeSchemaStmt(AlterObjectSchemaStmt *stmt, const char *queryString)
 	Assert(stmt->objectType == OBJECT_TYPE);
 
 	typeAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
-	if (!ShouldPropagateAlterType(typeAddress))
+	if (!ShouldPropagateObject(typeAddress))
 	{
 		return;
 	}
@@ -668,8 +655,8 @@ ProcessAlterTypeSchemaStmt(AlterObjectSchemaStmt *stmt, const char *queryString)
 
 
 /*
- * PlanAlterTypeOwnerStmt is called for change of owner ship of types before the owner
- * ship is changed on the local instance.
+ * PlanAlterTypeOwnerStmt is called for change of ownership of types before the
+ * ownership is changed on the local instance.
  *
  * If the type for which the owner is changed is distributed we execute the change on all
  * the workers to keep the type in sync across the cluster.
@@ -684,7 +671,7 @@ PlanAlterTypeOwnerStmt(AlterOwnerStmt *stmt, const char *queryString)
 	Assert(stmt->objectType == OBJECT_TYPE);
 
 	typeAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
-	if (!ShouldPropagateAlterType(typeAddress))
+	if (!ShouldPropagateObject(typeAddress))
 	{
 		return NIL;
 	}
@@ -1261,7 +1248,7 @@ FilterNameListForDistributedTypes(List *objects, bool missing_ok)
 
 /*
  * TypeNameListToObjectAddresses transforms a List * of TypeName *'s into a List * of
- * ObjectAddress *'s. For this to succeed all Types identiefied by the TypeName *'s should
+ * ObjectAddress *'s. For this to succeed all Types identified by the TypeName *'s should
  * exist on this postgres, an error will be thrown otherwise.
  */
 static List *
@@ -1326,7 +1313,7 @@ MakeTypeNameFromRangeVar(const RangeVar *relation)
  * EnsureSequentialModeForTypeDDL makes sure that the current transaction is already in
  * sequential mode, or can still safely be put in sequential mode, it errors if that is
  * not possible. The error contains information for the user to retry the transaction with
- * sequential mode set from the beginnig.
+ * sequential mode set from the begining.
  *
  * As types are node scoped objects there exists only 1 instance of the type used by
  * potentially multiple shards. To make sure all shards in the transaction can interact
@@ -1377,11 +1364,8 @@ EnsureSequentialModeForTypeDDL(void)
 static bool
 ShouldPropagateTypeCreate()
 {
-	if (!EnableDependencyCreation)
+	if (!ShouldPropagate())
 	{
-		/*
-		 * we are configured to disable object propagation, should not propagate anything
-		 */
 		return false;
 	}
 
@@ -1393,15 +1377,6 @@ ShouldPropagateTypeCreate()
 		return false;
 	}
 
-	if (creating_extension)
-	{
-		/*
-		 * extensions should be created separately on the workers, types cascading from an
-		 * extension should therefor not be propagated here.
-		 */
-		return false;
-	}
-
 	/*
 	 * by not propagating in a transaction block we allow for parallelism to be used when
 	 * this type will be used as a column in a table that will be created and distributed
@@ -1409,40 +1384,6 @@ ShouldPropagateTypeCreate()
 	 */
 	if (IsMultiStatementTransaction())
 	{
-		return false;
-	}
-
-	return true;
-}
-
-
-/*
- * ShouldPropagateAlterType determines if we should be propagating type alterations based
- * on its object address.
- */
-static bool
-ShouldPropagateAlterType(const ObjectAddress *address)
-{
-	if (creating_extension)
-	{
-		/*
-		 * extensions should be created separately on the workers, types cascading from an
-		 * extension should therefor not be propagated.
-		 */
-		return false;
-	}
-
-	if (!EnableDependencyCreation)
-	{
-		/*
-		 * we are configured to disable object propagation, should not propagate anything
-		 */
-		return false;
-	}
-
-	if (!IsObjectDistributed(address))
-	{
-		/* do not propagate alter types for non-distributed types */
 		return false;
 	}
 

@@ -395,6 +395,12 @@ multi_ProcessUtility(PlannedStmt *pstmt,
 			DropStmt *dropStatement = (DropStmt *) parsetree;
 			switch (dropStatement->removeType)
 			{
+				case OBJECT_COLLATION:
+				{
+					ddlJobs = PlanDropCollationStmt(dropStatement);
+					break;
+				}
+
 				case OBJECT_INDEX:
 				{
 					ddlJobs = PlanDropIndexStmt(dropStatement, queryString);
@@ -460,8 +466,8 @@ multi_ProcessUtility(PlannedStmt *pstmt,
 		}
 
 		/*
-		 * ALTER TABLE ... RENAME statements have their node type as RenameStmt and
-		 * not AlterTableStmt. So, we intercept RenameStmt to tackle these commands.
+		 * ALTER ... RENAME statements have their node type as RenameStmt.
+		 * So intercept RenameStmt to tackle these commands.
 		 */
 		if (IsA(parsetree, RenameStmt))
 		{
@@ -469,6 +475,12 @@ multi_ProcessUtility(PlannedStmt *pstmt,
 
 			switch (renameStmt->renameType)
 			{
+				case OBJECT_COLLATION:
+				{
+					ddlJobs = PlanRenameCollationStmt(renameStmt, queryString);
+					break;
+				}
+
 				case OBJECT_TYPE:
 				{
 					ddlJobs = PlanRenameTypeStmt(renameStmt, queryString);
@@ -833,6 +845,11 @@ PlanAlterOwnerStmt(AlterOwnerStmt *stmt, const char *queryString)
 {
 	switch (stmt->objectType)
 	{
+		case OBJECT_COLLATION:
+		{
+			return PlanAlterCollationOwnerStmt(stmt, queryString);
+		}
+
 		case OBJECT_TYPE:
 		{
 			return PlanAlterTypeOwnerStmt(stmt, queryString);
