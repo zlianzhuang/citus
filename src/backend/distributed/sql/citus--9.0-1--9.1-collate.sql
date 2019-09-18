@@ -1,5 +1,3 @@
-/* citus--8.3-1--8.4-1 */
-
 ALTER TABLE pg_catalog.pg_dist_colocation ADD distributioncolumncollation oid;
 UPDATE pg_catalog.pg_dist_colocation dc SET distributioncolumncollation = t.typcollation
 	FROM pg_catalog.pg_type t WHERE t.oid = dc.distributioncolumntype;
