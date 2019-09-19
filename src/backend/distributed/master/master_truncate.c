@@ -59,7 +59,7 @@ citus_truncate_trigger(PG_FUNCTION_ARGS)
 
 	if (!EnableDDLPropagation)
 	{
-		PG_RETURN_DATUM(PointerGetDatum(NULL));
+		PG_RETURN_NULL();
 	}
 
 	if (partitionMethod == DISTRIBUTE_BY_APPEND)
@@ -80,7 +80,7 @@ citus_truncate_trigger(PG_FUNCTION_ARGS)
 		ExecuteUtilityTaskListWithoutResults(taskList);
 	}
 
-	PG_RETURN_DATUM(PointerGetDatum(NULL));
+	PG_RETURN_NULL();
 }
 
 

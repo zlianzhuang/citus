@@ -269,7 +269,7 @@ task_tracker_conninfo_cache_invalidate(PG_FUNCTION_ARGS)
 
 	/* no-op in community edition */
 
-	PG_RETURN_DATUM(PointerGetDatum(NULL));
+	PG_RETURN_NULL();
 }
 
 
