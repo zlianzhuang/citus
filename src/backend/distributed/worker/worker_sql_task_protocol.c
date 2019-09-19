@@ -177,7 +177,7 @@ TaskFileDestReceiverStartup(DestReceiver *dest, int operation,
 	copyOutState->null_print = (char *) nullPrintCharacter;
 	copyOutState->null_print_client = (char *) nullPrintCharacter;
 	copyOutState->binary = taskFileDest->binaryCopyFormat;
-	copyOutState->fe_msgbuf = makeStringInfo();
+	initStringInfo(&copyOutState->fe_msgbuf);
 	copyOutState->rowcontext = GetPerTupleMemoryContext(taskFileDest->executorState);
 	taskFileDest->copyOutState = copyOutState;
 
@@ -192,10 +192,10 @@ TaskFileDestReceiverStartup(DestReceiver *dest, int operation,
 	if (copyOutState->binary)
 	{
 		/* write headers when using binary encoding */
-		resetStringInfo(copyOutState->fe_msgbuf);
+		resetStringInfo(&copyOutState->fe_msgbuf);
 		AppendCopyBinaryHeaders(copyOutState);
 
-		WriteToLocalFile(copyOutState->fe_msgbuf, taskFileDest);
+		WriteToLocalFile(&copyOutState->fe_msgbuf, taskFileDest);
 	}
 
 	MemoryContextSwitchTo(oldContext);
@@ -219,7 +219,6 @@ TaskFileDestReceiverReceive(TupleTableSlot *slot, DestReceiver *dest)
 
 	Datum *columnValues = NULL;
 	bool *columnNulls = NULL;
-	StringInfo copyData = copyOutState->fe_msgbuf;
 
 	EState *executorState = taskFileDest->executorState;
 	MemoryContext executorTupleContext = GetPerTupleMemoryContext(executorState);
@@ -230,13 +229,13 @@ TaskFileDestReceiverReceive(TupleTableSlot *slot, DestReceiver *dest)
 	columnValues = slot->tts_values;
 	columnNulls = slot->tts_isnull;
 
-	resetStringInfo(copyData);
+	resetStringInfo(&copyOutState->fe_msgbuf);
 
 	/* construct row in COPY format */
 	AppendCopyRowData(columnValues, columnNulls, tupleDescriptor,
 					  copyOutState, columnOutputFunctions, NULL);
 
-	WriteToLocalFile(copyOutState->fe_msgbuf, taskFileDest);
+	WriteToLocalFile(&copyOutState->fe_msgbuf, taskFileDest);
 
 	MemoryContextSwitchTo(oldContext);
 
@@ -278,9 +277,9 @@ TaskFileDestReceiverShutdown(DestReceiver *destReceiver)
 	if (copyOutState->binary)
 	{
 		/* write footers when using binary encoding */
-		resetStringInfo(copyOutState->fe_msgbuf);
+		resetStringInfo(&copyOutState->fe_msgbuf);
 		AppendCopyBinaryFooters(copyOutState);
-		WriteToLocalFile(copyOutState->fe_msgbuf, taskFileDest);
+		WriteToLocalFile(&copyOutState->fe_msgbuf, taskFileDest);
 	}
 
 	FileClose(taskFileDest->fileCompat.fd);

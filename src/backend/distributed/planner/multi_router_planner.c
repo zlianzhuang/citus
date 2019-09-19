@@ -659,14 +659,15 @@ ModifyQuerySupported(Query *queryTree, Query *originalQuery, bool multiShardQuer
 
 			if (!IsDistributedTable(relationId))
 			{
-				StringInfo errorMessage = makeStringInfo();
+				StringInfoData errorMessage;
 				char *relationName = get_rel_name(rangeTableEntry->relid);
 
-				appendStringInfo(errorMessage, "relation %s is not distributed",
+				initStringInfo(&errorMessage);
+				appendStringInfo(&errorMessage, "relation %s is not distributed",
 								 relationName);
 
 				return DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
-									 errorMessage->data, NULL, NULL);
+									 errorMessage.data, NULL, NULL);
 			}
 
 			queryTableCount++;
@@ -707,20 +708,21 @@ ModifyQuerySupported(Query *queryTree, Query *originalQuery, bool multiShardQuer
 			 */
 			if (rangeTableEntry->rtekind == RTE_SUBQUERY)
 			{
-				StringInfo errorHint = makeStringInfo();
+				StringInfoData errorHint;
 				DistTableCacheEntry *cacheEntry = DistributedTableCacheEntry(
 					distributedTableId);
 				char *partitionKeyString = cacheEntry->partitionKeyString;
 				char *partitionColumnName = ColumnNameToColumn(distributedTableId,
 															   partitionKeyString);
 
-				appendStringInfo(errorHint, "Consider using an equality filter on "
-											"partition column \"%s\" to target a single shard.",
+				initStringInfo(&errorHint);
+				appendStringInfo(&errorHint, "Consider using an equality filter on "
+											 "partition column \"%s\" to target a single shard.",
 								 partitionColumnName);
 
 				return DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED, "subqueries are not "
 																	"supported in modifications across multiple shards",
-									 errorHint->data, NULL);
+									 errorHint.data, NULL);
 			}
 			else if (rangeTableEntry->rtekind == RTE_JOIN)
 			{
@@ -1747,13 +1749,14 @@ SingleShardSelectTaskList(Query *query, uint64 jobId, List *relationShardList,
 						  uint64 shardId)
 {
 	Task *task = CreateTask(ROUTER_TASK);
-	StringInfo queryString = makeStringInfo();
+	StringInfoData queryString;
 	List *relationRowLockList = NIL;
 
 	RowLocksOnRelations((Node *) query, &relationRowLockList);
-	pg_get_query_def(query, queryString);
+	initStringInfo(&queryString);
+	pg_get_query_def(query, &queryString);
 
-	task->queryString = queryString->data;
+	task->queryString = queryString.data;
 	task->anchorShardId = shardId;
 	task->jobId = jobId;
 	task->taskPlacementList = placementList;
@@ -1814,7 +1817,7 @@ SingleShardModifyTaskList(Query *query, uint64 jobId, List *relationShardList,
 						  List *placementList, uint64 shardId)
 {
 	Task *task = CreateTask(MODIFY_TASK);
-	StringInfo queryString = makeStringInfo();
+	StringInfoData queryString;
 	DistTableCacheEntry *modificationTableCacheEntry = NULL;
 	char modificationPartitionMethod = 0;
 	List *rangeTableList = NIL;
@@ -1834,9 +1837,10 @@ SingleShardModifyTaskList(Query *query, uint64 jobId, List *relationShardList,
 							   "and modify a reference table")));
 	}
 
-	pg_get_query_def(query, queryString);
+	initStringInfo(&queryString);
+	pg_get_query_def(query, &queryString);
 
-	task->queryString = queryString->data;
+	task->queryString = queryString.data;
 	task->anchorShardId = shardId;
 	task->jobId = jobId;
 	task->taskPlacementList = placementList;
@@ -2515,9 +2519,12 @@ BuildRoutesForInsert(Query *query, DeferredErrorMessage **planningError)
 			char *partitionKeyString = cacheEntry->partitionKeyString;
 			char *partitionColumnName = ColumnNameToColumn(distributedTableId,
 														   partitionKeyString);
-			StringInfo errorMessage = makeStringInfo();
-			StringInfo errorHint = makeStringInfo();
+			StringInfoData errorMessage;
+			StringInfoData errorHint;
 			const char *targetCountType = NULL;
+
+			initStringInfo(&errorMessage);
+			initStringInfo(&errorHint);
 
 			if (prunedShardIntervalCount == 0)
 			{
@@ -2530,22 +2537,22 @@ BuildRoutesForInsert(Query *query, DeferredErrorMessage **planningError)
 
 			if (prunedShardIntervalCount == 0)
 			{
-				appendStringInfo(errorHint, "Make sure you have created a shard which "
-											"can receive this partition column value.");
+				appendStringInfo(&errorHint, "Make sure you have created a shard which "
+											 "can receive this partition column value.");
 			}
 			else
 			{
-				appendStringInfo(errorHint, "Make sure the value for partition column "
-											"\"%s\" falls into a single shard.",
+				appendStringInfo(&errorHint, "Make sure the value for partition column "
+											 "\"%s\" falls into a single shard.",
 								 partitionColumnName);
 			}
 
-			appendStringInfo(errorMessage, "cannot run INSERT command which targets %s "
-										   "shards", targetCountType);
+			appendStringInfo(&errorMessage, "cannot run INSERT command which targets %s "
+											"shards", targetCountType);
 
 			(*planningError) = DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
-											 errorMessage->data, NULL,
-											 errorHint->data);
+											 errorMessage.data, NULL,
+											 errorHint.data);
 
 			return NIL;
 		}

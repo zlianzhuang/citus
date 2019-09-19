@@ -58,11 +58,13 @@ void
 StartRemoteTransactionBegin(struct MultiConnection *connection)
 {
 	RemoteTransaction *transaction = &connection->remoteTransaction;
-	StringInfo beginAndSetDistributedTransactionId = makeStringInfo();
+	StringInfoData beginAndSetDistributedTransactionId;
 	DistributedTransactionId *distributedTransactionId = NULL;
 	ListCell *subIdCell = NULL;
 	List *activeSubXacts = NIL;
 	const char *timestamp = NULL;
+
+	initStringInfo(&beginAndSetDistributedTransactionId);
 
 	Assert(transaction->transactionState == REMOTE_TRANS_INVALID);
 
@@ -76,7 +78,7 @@ StartRemoteTransactionBegin(struct MultiConnection *connection)
 	 * side might have been changed, and that would cause problematic
 	 * behaviour.
 	 */
-	appendStringInfoString(beginAndSetDistributedTransactionId,
+	appendStringInfoString(&beginAndSetDistributedTransactionId,
 						   "BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;");
 
 	/*
@@ -86,7 +88,7 @@ StartRemoteTransactionBegin(struct MultiConnection *connection)
 	 */
 	distributedTransactionId = GetCurrentDistributedTransactionId();
 	timestamp = timestamptz_to_str(distributedTransactionId->timestamp);
-	appendStringInfo(beginAndSetDistributedTransactionId,
+	appendStringInfo(&beginAndSetDistributedTransactionId,
 					 "SELECT assign_distributed_transaction_id(%d, " UINT64_FORMAT
 					 ", '%s');",
 					 distributedTransactionId->initiatorNodeIdentifier,
@@ -104,12 +106,12 @@ StartRemoteTransactionBegin(struct MultiConnection *connection)
 		/* append SET LOCAL state from when SAVEPOINT was encountered... */
 		if (subXactState->setLocalCmds != NULL)
 		{
-			appendStringInfoString(beginAndSetDistributedTransactionId,
+			appendStringInfoString(&beginAndSetDistributedTransactionId,
 								   subXactState->setLocalCmds->data);
 		}
 
 		/* ... then append SAVEPOINT to enter this subxact */
-		appendStringInfo(beginAndSetDistributedTransactionId,
+		appendStringInfo(&beginAndSetDistributedTransactionId,
 						 "SAVEPOINT savepoint_%u;", subXactState->subId);
 		transaction->lastQueuedSubXact = subXactState->subId;
 	}
@@ -117,10 +119,11 @@ StartRemoteTransactionBegin(struct MultiConnection *connection)
 	/* we've pushed into deepest subxact: apply in-progress SET context */
 	if (activeSetStmts != NULL)
 	{
-		appendStringInfoString(beginAndSetDistributedTransactionId, activeSetStmts->data);
+		appendStringInfoString(&beginAndSetDistributedTransactionId,
+							   activeSetStmts->data);
 	}
 
-	if (!SendRemoteCommand(connection, beginAndSetDistributedTransactionId->data))
+	if (!SendRemoteCommand(connection, beginAndSetDistributedTransactionId.data))
 	{
 		const bool raiseErrors = true;
 
@@ -1131,10 +1134,11 @@ static void
 StartRemoteTransactionSavepointBegin(MultiConnection *connection, SubTransactionId subId)
 {
 	const bool raiseErrors = true;
-	StringInfo savepointCommand = makeStringInfo();
-	appendStringInfo(savepointCommand, "SAVEPOINT savepoint_%u", subId);
+	StringInfoData savepointCommand;
+	initStringInfo(&savepointCommand);
+	appendStringInfo(&savepointCommand, "SAVEPOINT savepoint_%u", subId);
 
-	if (!SendRemoteCommand(connection, savepointCommand->data))
+	if (!SendRemoteCommand(connection, savepointCommand.data))
 	{
 		HandleRemoteTransactionConnectionError(connection, raiseErrors);
 	}
@@ -1170,10 +1174,11 @@ StartRemoteTransactionSavepointRelease(MultiConnection *connection,
 									   SubTransactionId subId)
 {
 	const bool raiseErrors = true;
-	StringInfo savepointCommand = makeStringInfo();
-	appendStringInfo(savepointCommand, "RELEASE SAVEPOINT savepoint_%u", subId);
+	StringInfoData savepointCommand;
+	initStringInfo(&savepointCommand);
+	appendStringInfo(&savepointCommand, "RELEASE SAVEPOINT savepoint_%u", subId);
 
-	if (!SendRemoteCommand(connection, savepointCommand->data))
+	if (!SendRemoteCommand(connection, savepointCommand.data))
 	{
 		HandleRemoteTransactionConnectionError(connection, raiseErrors);
 	}
@@ -1210,10 +1215,11 @@ StartRemoteTransactionSavepointRollback(MultiConnection *connection,
 										SubTransactionId subId)
 {
 	const bool raiseErrors = false;
-	StringInfo savepointCommand = makeStringInfo();
-	appendStringInfo(savepointCommand, "ROLLBACK TO SAVEPOINT savepoint_%u", subId);
+	StringInfoData savepointCommand;
+	initStringInfo(&savepointCommand);
+	appendStringInfo(&savepointCommand, "ROLLBACK TO SAVEPOINT savepoint_%u", subId);
 
-	if (!SendRemoteCommand(connection, savepointCommand->data))
+	if (!SendRemoteCommand(connection, savepointCommand.data))
 	{
 		HandleRemoteTransactionConnectionError(connection, raiseErrors);
 	}

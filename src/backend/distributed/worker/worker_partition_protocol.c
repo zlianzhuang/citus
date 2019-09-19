@@ -960,7 +960,6 @@ FilterAndPartitionTable(const char *filterQuery,
 			HeapTuple row = SPI_tuptable->vals[rowIndex];
 			TupleDesc rowDescriptor = SPI_tuptable->tupdesc;
 			FileOutputStream *partitionFile = NULL;
-			StringInfo rowText = NULL;
 			Datum partitionKey = 0;
 			bool partitionKeyNull = false;
 			uint32 partitionId = 0;
@@ -993,12 +992,10 @@ FilterAndPartitionTable(const char *filterQuery,
 			AppendCopyRowData(valueArray, isNullArray, rowDescriptor,
 							  rowOutputState, columnOutputFunctions, NULL);
 
-			rowText = rowOutputState->fe_msgbuf;
-
 			partitionFile = &partitionFileArray[partitionId];
-			FileOutputStreamWrite(partitionFile, rowText);
+			FileOutputStreamWrite(partitionFile, &rowOutputState->fe_msgbuf);
 
-			resetStringInfo(rowText);
+			resetStringInfo(&rowOutputState->fe_msgbuf);
 			MemoryContextReset(rowOutputState->rowcontext);
 		}
 
@@ -1109,7 +1106,7 @@ InitRowOutputState(void)
 															   ALLOCSET_DEFAULT_MAXSIZE);
 
 	/* allocate the message buffer to use for serializing a row */
-	rowOutputState->fe_msgbuf = makeStringInfo();
+	initStringInfo(&rowOutputState->fe_msgbuf);
 
 	return rowOutputState;
 }
@@ -1123,7 +1120,7 @@ ClearRowOutputState(CopyOutState rowOutputState)
 
 	MemoryContextDelete(rowOutputState->rowcontext);
 
-	FreeStringInfo(rowOutputState->fe_msgbuf);
+	pfree(rowOutputState->fe_msgbuf.data);
 
 	pfree(rowOutputState->null_print_client);
 	pfree(rowOutputState->delim);
@@ -1148,12 +1145,12 @@ OutputBinaryHeaders(FileOutputStream *partitionFileArray, uint32 fileCount)
 		CopyOutState headerOutputState = (CopyOutState) & headerOutputStateData;
 
 		memset(headerOutputState, 0, sizeof(CopyOutStateData));
-		headerOutputState->fe_msgbuf = makeStringInfo();
+		initStringInfo(&headerOutputState->fe_msgbuf);
 
 		AppendCopyBinaryHeaders(headerOutputState);
 
 		partitionFile = partitionFileArray[fileIndex];
-		FileOutputStreamWrite(&partitionFile, headerOutputState->fe_msgbuf);
+		FileOutputStreamWrite(&partitionFile, &headerOutputState->fe_msgbuf);
 	}
 }
 
@@ -1174,12 +1171,12 @@ OutputBinaryFooters(FileOutputStream *partitionFileArray, uint32 fileCount)
 		CopyOutState footerOutputState = (CopyOutState) & footerOutputStateData;
 
 		memset(footerOutputState, 0, sizeof(CopyOutStateData));
-		footerOutputState->fe_msgbuf = makeStringInfo();
+		initStringInfo(&footerOutputState->fe_msgbuf);
 
 		AppendCopyBinaryFooters(footerOutputState);
 
 		partitionFile = partitionFileArray[fileIndex];
-		FileOutputStreamWrite(&partitionFile, footerOutputState->fe_msgbuf);
+		FileOutputStreamWrite(&partitionFile, &footerOutputState->fe_msgbuf);
 	}
 }
 

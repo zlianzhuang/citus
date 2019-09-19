@@ -413,7 +413,7 @@ RecoverWorkerTransactions(WorkerNode *workerNode)
 static List *
 PendingWorkerTransactionList(MultiConnection *connection)
 {
-	StringInfo command = makeStringInfo();
+	StringInfoData command;
 	bool raiseInterrupts = true;
 	int querySent = 0;
 	PGresult *result = NULL;
@@ -422,11 +422,12 @@ PendingWorkerTransactionList(MultiConnection *connection)
 	List *transactionNames = NIL;
 	int coordinatorId = GetLocalGroupId();
 
-	appendStringInfo(command, "SELECT gid FROM pg_prepared_xacts "
-							  "WHERE gid LIKE 'citus\\_%d\\_%%'",
+	initStringInfo(&command);
+	appendStringInfo(&command, "SELECT gid FROM pg_prepared_xacts "
+							   "WHERE gid LIKE 'citus\\_%d\\_%%'",
 					 coordinatorId);
 
-	querySent = SendRemoteCommand(connection, command->data);
+	querySent = SendRemoteCommand(connection, command.data);
 	if (querySent == 0)
 	{
 		ReportConnectionError(connection, ERROR);
@@ -491,38 +492,33 @@ static bool
 RecoverPreparedTransactionOnWorker(MultiConnection *connection, char *transactionName,
 								   bool shouldCommit)
 {
-	StringInfo command = makeStringInfo();
-	PGresult *result = NULL;
+	StringInfoData command;
 	int executeCommand = 0;
 	bool raiseInterrupts = false;
 
+	initStringInfo(&command);
 	if (shouldCommit)
 	{
 		/* should have committed this prepared transaction */
-		appendStringInfo(command, "COMMIT PREPARED '%s'", transactionName);
+		appendStringInfo(&command, "COMMIT PREPARED '%s'", transactionName);
 	}
 	else
 	{
 		/* should have aborted this prepared transaction */
-		appendStringInfo(command, "ROLLBACK PREPARED '%s'", transactionName);
+		appendStringInfo(&command, "ROLLBACK PREPARED '%s'", transactionName);
 	}
 
-	executeCommand = ExecuteOptionalRemoteCommand(connection, command->data, &result);
-	if (executeCommand == QUERY_SEND_FAILED)
-	{
-		return false;
-	}
-	if (executeCommand == RESPONSE_NOT_OKAY)
+	executeCommand = ExecuteOptionalRemoteCommand(connection, command.data, NULL);
+	if (executeCommand != RESPONSE_OKAY)
 	{
 		return false;
 	}
 
-	PQclear(result);
 	ClearResults(connection, raiseInterrupts);
 
 	ereport(LOG, (errmsg("recovered a prepared transaction on %s:%d",
 						 connection->hostname, connection->port),
-				  errcontext("%s", command->data)));
+				  errcontext("%s", command.data)));
 
 	return true;
 }

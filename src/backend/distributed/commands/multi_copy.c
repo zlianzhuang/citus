@@ -657,7 +657,7 @@ CopyToNewShards(CopyStmt *copyStatement, char *completionTag, Oid relationId)
 	copyOutState->null_print = (char *) nullPrintCharacter;
 	copyOutState->null_print_client = (char *) nullPrintCharacter;
 	copyOutState->binary = CanUseBinaryCopyFormat(tupleDescriptor);
-	copyOutState->fe_msgbuf = makeStringInfo();
+	initStringInfo(&copyOutState->fe_msgbuf);
 	copyOutState->rowcontext = executorTupleContext;
 
 	columnOutputFunctions = ColumnOutputFunctions(tupleDescriptor, copyOutState->binary);
@@ -725,13 +725,13 @@ CopyToNewShards(CopyStmt *copyStatement, char *completionTag, Oid relationId)
 		}
 
 		/* replicate row to shard placements */
-		resetStringInfo(copyOutState->fe_msgbuf);
+		resetStringInfo(&copyOutState->fe_msgbuf);
 		AppendCopyRowData(columnValues, columnNulls, tupleDescriptor,
 						  copyOutState, columnOutputFunctions, NULL);
-		SendCopyDataToAll(copyOutState->fe_msgbuf, currentShardId,
+		SendCopyDataToAll(&copyOutState->fe_msgbuf, currentShardId,
 						  shardConnections->connectionList);
 
-		messageBufferSize = copyOutState->fe_msgbuf->len;
+		messageBufferSize = copyOutState->fe_msgbuf.len;
 		copiedDataSizeInBytes = copiedDataSizeInBytes + messageBufferSize;
 
 		/*
@@ -1199,9 +1199,9 @@ RemoteFinalizedShardPlacementList(uint64 shardId)
 static void
 SendCopyBinaryHeaders(CopyOutState copyOutState, int64 shardId, List *connectionList)
 {
-	resetStringInfo(copyOutState->fe_msgbuf);
+	resetStringInfo(&copyOutState->fe_msgbuf);
 	AppendCopyBinaryHeaders(copyOutState);
-	SendCopyDataToAll(copyOutState->fe_msgbuf, shardId, connectionList);
+	SendCopyDataToAll(&copyOutState->fe_msgbuf, shardId, connectionList);
 }
 
 
@@ -1209,9 +1209,9 @@ SendCopyBinaryHeaders(CopyOutState copyOutState, int64 shardId, List *connection
 static void
 SendCopyBinaryFooters(CopyOutState copyOutState, int64 shardId, List *connectionList)
 {
-	resetStringInfo(copyOutState->fe_msgbuf);
+	resetStringInfo(&copyOutState->fe_msgbuf);
 	AppendCopyBinaryFooters(copyOutState);
-	SendCopyDataToAll(copyOutState->fe_msgbuf, shardId, connectionList);
+	SendCopyDataToAll(&copyOutState->fe_msgbuf, shardId, connectionList);
 }
 
 
@@ -2011,7 +2011,7 @@ RemoteUpdateShardStatistics(uint64 shardId)
 static void
 CopySendData(CopyOutState outputState, const void *databuf, int datasize)
 {
-	appendBinaryStringInfo(outputState->fe_msgbuf, databuf, datasize);
+	appendBinaryStringInfo(&outputState->fe_msgbuf, databuf, datasize);
 }
 
 
@@ -2019,7 +2019,7 @@ CopySendData(CopyOutState outputState, const void *databuf, int datasize)
 static void
 CopySendString(CopyOutState outputState, const char *str)
 {
-	appendBinaryStringInfo(outputState->fe_msgbuf, str, strlen(str));
+	appendBinaryStringInfo(&outputState->fe_msgbuf, str, strlen(str));
 }
 
 
@@ -2027,7 +2027,7 @@ CopySendString(CopyOutState outputState, const char *str)
 static void
 CopySendChar(CopyOutState outputState, char c)
 {
-	appendStringInfoCharMacro(outputState->fe_msgbuf, c);
+	appendStringInfoCharMacro(&outputState->fe_msgbuf, c);
 }
 
 
@@ -2304,7 +2304,7 @@ CitusCopyDestReceiverStartup(DestReceiver *dest, int operation,
 	copyOutState->null_print = (char *) nullPrintCharacter;
 	copyOutState->null_print_client = (char *) nullPrintCharacter;
 	copyOutState->binary = CanUseBinaryCopyFormat(inputTupleDescriptor);
-	copyOutState->fe_msgbuf = makeStringInfo();
+	initStringInfo(&copyOutState->fe_msgbuf);
 	copyOutState->rowcontext = GetPerTupleMemoryContext(copyDest->executorState);
 	copyDest->copyOutState = copyOutState;
 	copyDest->multiShardCopy = false;
@@ -2507,7 +2507,7 @@ CitusSendTupleToPlacements(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest
 		else if (currentPlacementState != activePlacementState)
 		{
 			/* buffer data */
-			StringInfo copyBuffer = copyOutState->fe_msgbuf;
+			StringInfo copyBuffer = &copyOutState->fe_msgbuf;
 			resetStringInfo(copyBuffer);
 			AppendCopyRowData(columnValues, columnNulls, tupleDescriptor,
 							  copyOutState, columnOutputFunctions,
@@ -2523,10 +2523,10 @@ CitusSendTupleToPlacements(TupleTableSlot *slot, CitusCopyDestReceiver *copyDest
 
 		if (sendTupleOverConnection)
 		{
-			resetStringInfo(copyOutState->fe_msgbuf);
+			resetStringInfo(&copyOutState->fe_msgbuf);
 			AppendCopyRowData(columnValues, columnNulls, tupleDescriptor,
 							  copyOutState, columnOutputFunctions, columnCoercionPaths);
-			SendCopyDataToPlacement(copyOutState->fe_msgbuf, shardId,
+			SendCopyDataToPlacement(&copyOutState->fe_msgbuf, shardId,
 									connectionState->connection);
 		}
 	}

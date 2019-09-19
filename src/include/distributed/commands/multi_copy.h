@@ -31,8 +31,8 @@
  */
 typedef struct CopyOutStateData
 {
-	StringInfo fe_msgbuf;       /* used for all dests during COPY TO, only for
-	                             * dest == COPY_NEW_FE in COPY FROM */
+	StringInfoData fe_msgbuf;       /* used for all dests during COPY TO, only for
+	                                 * dest == COPY_NEW_FE in COPY FROM */
 	int file_encoding;          /* file or remote side's character encoding */
 	bool need_transcoding;              /* file encoding diff from server? */
 	bool binary;                /* binary format? */
