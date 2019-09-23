@@ -598,6 +598,12 @@ RouterModifyExecScan(CustomScanState *node)
 		ErrorIfLocalExecutionHappened();
 		DisableLocalExecution();
 
+		/*
+		 * Make sure we can see notices during regular queries, which would typically
+		 * be the result of a function that raises a notices being called.
+		 */
+		SetCitusNoticeLevel(NOTICE);
+
 		ExecuteSubPlans(distributedPlan);
 
 		if (list_length(taskList) <= 1 ||
@@ -620,6 +626,8 @@ RouterModifyExecScan(CustomScanState *node)
 		{
 			SortTupleStore(scanState);
 		}
+
+		UnsetCitusNoticeLevel();
 
 		scanState->finishedRemoteScan = true;
 	}

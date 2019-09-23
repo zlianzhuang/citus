@@ -381,6 +381,8 @@ WARNING:  failed to commit transaction on localhost:57638
 WARNING:  illegal value
 WARNING:  failed to commit transaction on localhost:57637
 WARNING:  could not commit transaction for shard 1200001 on any active node
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
 ERROR:  could not commit transaction on any active node
 \unset VERBOSITY
 -- verify everyhing including delete is rolled back
@@ -668,6 +670,8 @@ WARNING:  illegal value
 WARNING:  failed to commit transaction on localhost:57638
 WARNING:  could not commit transaction for shard 1200002 on any active node
 WARNING:  could not commit transaction for shard 1200003 on any active node
+WARNING:  there is no transaction in progress
+WARNING:  there is no transaction in progress
 ERROR:  could not commit transaction on any active node
 -- data should NOT be persisted
 SELECT * FROM objects WHERE id = 1;

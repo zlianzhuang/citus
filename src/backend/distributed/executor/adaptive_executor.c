@@ -617,6 +617,12 @@ AdaptiveExecutor(CustomScanState *node)
 	 */
 	LockPartitionsForDistributedPlan(distributedPlan);
 
+	/*
+	 * Make sure we can see notices during regular queries, which would typically
+	 * be the result of a function that raises a notices being called.
+	 */
+	SetCitusNoticeLevel(NOTICE);
+
 	ExecuteSubPlans(distributedPlan);
 
 	if (MultiShardConnectionType == SEQUENTIAL_CONNECTION)

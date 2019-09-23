@@ -565,6 +565,8 @@ SELECT create_distributed_table('transactional_drop_mx', 'column1');
 UPDATE pg_dist_partition SET repmodel='s' WHERE logicalrelid='transactional_drop_mx'::regclass;
 -- make worker 1 receive metadata changes
 SELECT start_metadata_sync_to_node('localhost', :worker_1_port);
+WARNING:  could not find any shard placements for shardId 1300086
+DETAIL:  from localhost:57637
  start_metadata_sync_to_node 
 -----------------------------
  

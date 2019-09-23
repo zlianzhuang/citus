@@ -43,10 +43,12 @@ static int ConnectionHashCompare(const void *a, const void *b, Size keysize);
 static MultiConnection * StartConnectionEstablishment(ConnectionHashKey *key);
 static void FreeConnParamsHashEntryFields(ConnParamsHashEntry *entry);
 static void AfterXactHostConnectionHandling(ConnectionHashEntry *entry, bool isCommit);
-static void DefaultCitusNoticeProcessor(void *arg, const char *message);
+static void SetCitusNoticeReceiver(MultiConnection *connection);
+static void DefaultCitusNoticeReceiver(void *arg, const PGresult *result);
 static MultiConnection * FindAvailableConnection(dlist_head *connections, uint32 flags);
 static bool RemoteTransactionIdle(MultiConnection *connection);
 static int EventSetSizeForConnectionList(List *connections);
+static int LogLevelNameToLogLevel(char *levelName);
 
 /* types for async connection management */
 enum MultiConnectionPhase
@@ -72,6 +74,27 @@ static uint32 MultiConnectionStateEventMask(MultiConnectionPollState *connection
 
 
 static int CitusNoticeLogLevel = DEFAULT_CITUS_NOTICE_LEVEL;
+
+static const char *LogLevelNames[] = {
+	"DEBUG",
+	"NOTICE",
+	"INFO",
+	"WARNING",
+	"ERROR",
+	"FATAL",
+	"PANIC",
+	NULL
+};
+
+static const int LogLevels[] = {
+	DEBUG1,
+	NOTICE,
+	INFO,
+	WARNING,
+	ERROR,
+	FATAL,
+	PANIC
+};
 
 
 /*
@@ -984,7 +1007,7 @@ StartConnectionEstablishment(ConnectionHashKey *key)
 	 */
 	PQsetnonblocking(connection->pgConn, true);
 
-	SetCitusNoticeProcessor(connection);
+	SetCitusNoticeReceiver(connection);
 
 	return connection;
 }
@@ -1121,13 +1144,13 @@ RemoteTransactionIdle(MultiConnection *connection)
 
 
 /*
- * SetCitusNoticeProcessor sets the NoticeProcessor to DefaultCitusNoticeProcessor
+ * SetCitusNoticeReceiver sets the NoticeReceiver to DefaultCitusNoticeReceivere
  */
 void
-SetCitusNoticeProcessor(MultiConnection *connection)
+SetCitusNoticeReceiver(MultiConnection *connection)
 {
-	PQsetNoticeProcessor(connection->pgConn, DefaultCitusNoticeProcessor,
-						 connection);
+	PQsetNoticeReceiver(connection->pgConn, DefaultCitusNoticeReceiver,
+						connection);
 }
 
 
@@ -1154,21 +1177,28 @@ UnsetCitusNoticeLevel()
 
 
 /*
- * DefaultCitusNoticeProcessor is used to redirect worker notices
+ * DefaultCitusNoticeReceiver is used to redirect worker notices
  * from logfile to console.
  */
 static void
-DefaultCitusNoticeProcessor(void *arg, const char *message)
+DefaultCitusNoticeReceiver(void *arg, const PGresult *result)
 {
 	MultiConnection *connection = (MultiConnection *) arg;
 	char *nodeName = connection->hostname;
 	uint32 nodePort = connection->port;
+	char *message = PQresultErrorMessage(result);
 	char *trimmedMessage = TrimLogLevel(message);
-	char *level = strtok((char *) message, ":");
+	char *levelName = PQresultErrorField(result, PG_DIAG_SEVERITY);
+	int logLevel = LogLevelNameToLogLevel(levelName);
 
-	ereport(CitusNoticeLogLevel,
+	if (logLevel == NOTICE)
+	{
+		logLevel = CitusNoticeLogLevel;
+	}
+
+	ereport(logLevel,
 			(errmsg("%s", ApplyLogRedaction(trimmedMessage)),
-			 errdetail("%s from %s:%d", level, nodeName, nodePort)));
+			 errdetail("from %s:%d", nodeName, nodePort)));
 }
 
 
@@ -1197,4 +1227,27 @@ TrimLogLevel(const char *message)
 	} while (n < strlen(chompedMessage) && chompedMessage[n] == ' ');
 
 	return chompedMessage + n;
+}
+
+
+/*
+ * LogLevelNameToLogLevel translates the prefix of Postgres log messages
+ * back to a native log level.
+ */
+static int
+LogLevelNameToLogLevel(char *levelName)
+{
+	int levelIndex = 0;
+
+	while (LogLevelNames[levelIndex] != NULL)
+	{
+		if (strcmp(levelName, LogLevelNames[levelIndex]) == 0)
+		{
+			return LogLevels[levelIndex];
+		}
+
+		levelIndex++;
+	}
+
+	return DEBUG1;
 }

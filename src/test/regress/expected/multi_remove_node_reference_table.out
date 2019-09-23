@@ -11,6 +11,8 @@ CREATE TABLE tmp_shard_placement AS SELECT * FROM pg_dist_shard_placement WHERE 
 DELETE FROM pg_dist_shard_placement WHERE nodeport = :worker_2_port;
 -- make worker 1 receive metadata changes
 SELECT start_metadata_sync_to_node('localhost', :worker_1_port);
+WARNING:  could not find any shard placements for shardId 1300086
+DETAIL:  from localhost:57637
  start_metadata_sync_to_node 
 -----------------------------
  

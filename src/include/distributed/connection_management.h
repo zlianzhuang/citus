@@ -201,7 +201,6 @@ extern void UnclaimConnection(MultiConnection *connection);
 extern long DeadlineTimestampTzToTimeout(TimestampTz deadline);
 
 /* dealing with notice handler */
-extern void SetCitusNoticeProcessor(MultiConnection *connection);
 extern void SetCitusNoticeLevel(int level);
 extern char * TrimLogLevel(const char *message);
 extern void UnsetCitusNoticeLevel(void);

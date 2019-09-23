@@ -345,6 +345,7 @@ WARNING:  illegal value
 WARNING:  failed to commit transaction on localhost:57637
 WARNING:  could not commit transaction for shard 1220103 on any active node
 WARNING:  could not commit transaction for shard 1220102 on any active node
+WARNING:  there is no transaction in progress
 ERROR:  could not commit transaction on any active node
 -- data should NOT be persisted
 SELECT * FROM objects_mx WHERE id = 2;
@@ -373,6 +374,7 @@ WARNING:  illegal value
 WARNING:  failed to commit transaction on localhost:57637
 WARNING:  could not commit transaction for shard 1220103 on any active node
 WARNING:  could not commit transaction for shard 1220102 on any active node
+WARNING:  there is no transaction in progress
 ERROR:  could not commit transaction on any active node
 -- data should NOT be persisted
 SELECT * FROM objects_mx WHERE id = 1;
@@ -398,6 +400,7 @@ WARNING:  illegal value
 WARNING:  failed to commit transaction on localhost:57637
 WARNING:  could not commit transaction for shard 1220103 on any active node
 WARNING:  could not commit transaction for shard 1220102 on any active node
+WARNING:  there is no transaction in progress
 ERROR:  could not commit transaction on any active node
 -- no data should persists
 SELECT * FROM objects_mx WHERE id = 1;

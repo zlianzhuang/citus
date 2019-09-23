@@ -8,6 +8,24 @@ CREATE SCHEMA function_tests AUTHORIZATION functionuser;
 SET search_path TO function_tests;
 SET citus.shard_count TO 4;
 
+-- test notice
+CREATE TABLE notices (
+    id int primary key,
+    message text
+);
+SELECT create_distributed_table('notices', 'id');
+INSERT INTO notices VALUES (1, 'hello world');
+
+CREATE FUNCTION notice(text)
+RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE NOTICE '%', $1;
+END;
+$$;
+SELECT create_distributed_function('notice(text)');
+SELECT notice(message) FROM notices WHERE id = 1;
+
 -- Create and distribute a simple function
 CREATE FUNCTION add(integer, integer) RETURNS integer
     AS 'select $1 + $2;'
