@@ -159,13 +159,13 @@ TryToDelegateFunctionCall(Query *query)
 	if (procedure->distributionArgIndex < 0 ||
 		procedure->distributionArgIndex >= list_length(funcExpr->args))
 	{
-		ereport(DEBUG2, (errmsg("function call does not have a distribution argument")));
+		ereport(DEBUG1, (errmsg("function call does not have a distribution argument")));
 		return NULL;
 	}
 
 	if (contain_volatile_functions((Node *) funcExpr->args))
 	{
-		ereport(DEBUG2, (errmsg("arguments in a distributed function must "
+		ereport(DEBUG1, (errmsg("arguments in a distributed function must "
 								"be constant expressions")));
 		return NULL;
 	}
@@ -173,7 +173,7 @@ TryToDelegateFunctionCall(Query *query)
 	colocatedRelationId = ColocatedTableId(procedure->colocationId);
 	if (colocatedRelationId == InvalidOid)
 	{
-		ereport(DEBUG2, (errmsg("function does not have co-located tables")));
+		ereport(DEBUG1, (errmsg("function does not have co-located tables")));
 		return NULL;
 	}
 
@@ -190,7 +190,7 @@ TryToDelegateFunctionCall(Query *query)
 	partitionValue = (Const *) list_nth(funcExpr->args, procedure->distributionArgIndex);
 	if (!IsA(partitionValue, Const))
 	{
-		ereport(DEBUG2, (errmsg("distribution argument value must be a constant")));
+		ereport(DEBUG1, (errmsg("distribution argument value must be a constant")));
 		return NULL;
 	}
 
@@ -209,7 +209,7 @@ TryToDelegateFunctionCall(Query *query)
 	shardInterval = FindShardInterval(partitionValueDatum, distTable);
 	if (shardInterval == NULL)
 	{
-		ereport(DEBUG2, (errmsg("cannot push down call, failed to find shard interval")));
+		ereport(DEBUG1, (errmsg("cannot push down call, failed to find shard interval")));
 		return NULL;
 	}
 
@@ -217,7 +217,7 @@ TryToDelegateFunctionCall(Query *query)
 	if (list_length(placementList) != 1)
 	{
 		/* punt on this for now */
-		ereport(DEBUG2, (errmsg(
+		ereport(DEBUG1, (errmsg(
 							 "cannot push down function call for replicated distributed tables")));
 		return NULL;
 	}
@@ -227,9 +227,11 @@ TryToDelegateFunctionCall(Query *query)
 
 	if (workerNode == NULL || !workerNode->hasMetadata || !workerNode->metadataSynced)
 	{
-		ereport(DEBUG2, (errmsg("the worker node does not have metadata")));
+		ereport(DEBUG1, (errmsg("the worker node does not have metadata")));
 		return NULL;
 	}
+
+	ereport(DEBUG1, (errmsg("pushing down the function call")));
 
 	queryString = makeStringInfo();
 	pg_get_query_def(query, queryString);
