@@ -161,6 +161,12 @@ CitusBeginScan(CustomScanState *node, EState *estate, int eflags)
 
 	MarkCitusInitiatedCoordinatorBackend();
 
+	/*
+	 * Make sure we can see notices during regular queries, which would typically
+	 * be the result of a function that raises a notices being called.
+	 */
+	SetCitusNoticeLevel(NOTICE);
+
 	scanState = (CitusScanState *) node;
 
 #if PG_VERSION_NUM >= 120000
@@ -353,6 +359,9 @@ CitusEndScan(CustomScanState *node)
 	MultiExecutorType executorType = scanState->executorType;
 	Const *partitionKeyConst = NULL;
 	char *partitionKeyString = NULL;
+
+	/* stop propagating notices */
+	UnsetCitusNoticeLevel();
 
 	if (workerJob != NULL)
 	{
