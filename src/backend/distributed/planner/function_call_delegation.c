@@ -129,8 +129,16 @@ TryToDelegateFunctionCall(Query *query)
 		if (list_length(joinTree->fromlist) == 1)
 		{
 			RangeTblRef *reference = linitial(joinTree->fromlist);
-			RangeTblEntry *rtentry = rt_fetch(reference->rtindex, query->rtable);
-			if (rtentry->rtekind != RTE_RESULT)
+
+			if (IsA(reference, RangeTblRef))
+			{
+				RangeTblEntry *rtentry = rt_fetch(reference->rtindex, query->rtable);
+				if (rtentry->rtekind != RTE_RESULT)
+				{
+					return NULL;
+				}
+			}
+			else
 			{
 				return NULL;
 			}
