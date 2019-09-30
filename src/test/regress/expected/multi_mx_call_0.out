@@ -61,9 +61,6 @@ BEGIN
     -- that are routed to the workers.
     y := y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id);
 END;$$;
-ERROR:  syntax error at or near "PROCEDURE"
-LINE 1: CREATE PROCEDURE mx_call_proc(x int, INOUT y int)
-               ^
 -- create another procedure which verifies:
 -- 1. we work fine with multiple return columns
 -- 2. we work fine in combination with custom types
@@ -73,47 +70,68 @@ BEGIN
     y := x;
     x := (select case groupid when 0 then 'F' else 'S' end from pg_dist_local_group);
 END;$$;
-ERROR:  syntax error at or near "PROCEDURE"
-LINE 1: CREATE PROCEDURE mx_call_proc_custom_types(INOUT x mx_call_e...
-               ^
 -- Test that undistributed procedures have no issue executing
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+ y  
+----
+ 29
+(1 row)
+
 call multi_mx_call.mx_call_proc_custom_types('S', 'A');
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc_custom_types('S', 'A');
-        ^
+ x | y 
+---+---
+ F | S
+(1 row)
+
 -- Same for unqualified names
 call mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call mx_call_proc(2, 0);
-        ^
+ y  
+----
+ 29
+(1 row)
+
 call mx_call_proc_custom_types('S', 'A');
-ERROR:  syntax error at or near "call"
-LINE 1: call mx_call_proc_custom_types('S', 'A');
-        ^
+ x | y 
+---+---
+ F | S
+(1 row)
+
 -- Mark both procedures as distributed ...
 select create_distributed_function('mx_call_proc(int,int)');
-ERROR:  function "mx_call_proc(int,int)" does not exist
-LINE 1: select create_distributed_function('mx_call_proc(int,int)');
-                                           ^
+ create_distributed_function 
+-----------------------------
+ 
+(1 row)
+
 select create_distributed_function('mx_call_proc_custom_types(mx_call_enum,mx_call_enum)');
-ERROR:  function "mx_call_proc_custom_types(mx_call_enum,mx_call_enum)" does not exist
-LINE 1: select create_distributed_function('mx_call_proc_custom_type...
-                                           ^
+ create_distributed_function 
+-----------------------------
+ 
+(1 row)
+
 -- We still don't route them to the workers, because they aren't
 -- colocated with any distributed tables.
 SET client_min_messages TO DEBUG1;
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+DEBUG:  stored procedure does not have co-located tables
+DEBUG:  generating subplan 10_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 10 query after replacing subqueries and CTEs: SELECT (3 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('10_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 29
+(1 row)
+
 call multi_mx_call.mx_call_proc_custom_types('S', 'A');
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc_custom_types('S', 'A');
-        ^
+DEBUG:  stored procedure does not have co-located tables
+ x | y 
+---+---
+ F | S
+(1 row)
+
 -- Mark them as colocated with a table. Now we should route them to workers.
 select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_1'::regclass, 1);
  colocate_proc_with_table 
@@ -128,27 +146,48 @@ select colocate_proc_with_table('mx_call_proc_custom_types', 'mx_call_dist_table
 (1 row)
 
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+DEBUG:  pushing down the procedure
+ y  
+----
+ 28
+(1 row)
+
 call multi_mx_call.mx_call_proc_custom_types('S', 'A');
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc_custom_types('S', 'A');
-        ^
+DEBUG:  pushing down the procedure
+ x | y 
+---+---
+ S | S
+(1 row)
+
 call mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call mx_call_proc(2, 0);
-        ^
+DEBUG:  pushing down the procedure
+ y  
+----
+ 28
+(1 row)
+
 call mx_call_proc_custom_types('S', 'A');
-ERROR:  syntax error at or near "call"
-LINE 1: call mx_call_proc_custom_types('S', 'A');
-        ^
+DEBUG:  pushing down the procedure
+ x | y 
+---+---
+ S | S
+(1 row)
+
 -- We don't allow distributing calls inside transactions
 begin;
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+DEBUG:  cannot push down CALL in multi-statement transaction
+DEBUG:  generating subplan 12_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 12 query after replacing subqueries and CTEs: SELECT (3 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('12_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 29
+(1 row)
+
 commit;
 -- Drop the table colocated with mx_call_proc_custom_types. Now it shouldn't
 -- be routed to workers anymore.
@@ -156,9 +195,12 @@ SET client_min_messages TO NOTICE;
 drop table mx_call_dist_table_enum;
 SET client_min_messages TO DEBUG1;
 call multi_mx_call.mx_call_proc_custom_types('S', 'A');
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc_custom_types('S', 'A');
-        ^
+DEBUG:  stored procedure does not have co-located tables
+ x | y 
+---+---
+ F | S
+(1 row)
+
 -- Make sure we do bounds checking on distributed argument index
 -- This also tests that we have cache invalidation for pg_dist_object updates
 select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_1'::regclass, -1);
@@ -168,9 +210,18 @@ select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_1'::regclass
 (1 row)
 
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+DEBUG:  cannot push down invalid distribution_argument_index
+DEBUG:  generating subplan 14_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 14 query after replacing subqueries and CTEs: SELECT (3 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('14_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 29
+(1 row)
+
 select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_1'::regclass, 2);
  colocate_proc_with_table 
 --------------------------
@@ -178,9 +229,18 @@ select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_1'::regclass
 (1 row)
 
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+DEBUG:  cannot push down invalid distribution_argument_index
+DEBUG:  generating subplan 17_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 17 query after replacing subqueries and CTEs: SELECT (3 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('17_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 29
+(1 row)
+
 -- We don't currently support colocating with reference tables
 select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_ref'::regclass, 1);
  colocate_proc_with_table 
@@ -189,9 +249,18 @@ select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_ref'::regcla
 (1 row)
 
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+DEBUG:  cannot push down CALL for reference tables
+DEBUG:  generating subplan 19_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 19 query after replacing subqueries and CTEs: SELECT (3 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('19_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 29
+(1 row)
+
 -- We don't currently support colocating with replicated tables
 select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_replica'::regclass, 1);
  colocate_proc_with_table 
@@ -200,9 +269,18 @@ select colocate_proc_with_table('mx_call_proc', 'mx_call_dist_table_replica'::re
 (1 row)
 
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+DEBUG:  cannot push down CALL for replicated distributed tables
+DEBUG:  generating subplan 21_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 21 query after replacing subqueries and CTEs: SELECT (3 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('21_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 29
+(1 row)
+
 SET client_min_messages TO NOTICE;
 drop table mx_call_dist_table_replica;
 SET client_min_messages TO DEBUG1;
@@ -223,23 +301,19 @@ BEGIN
     -- Now do the final update!
     UPDATE multi_mx_call.mx_call_dist_table_1 SET val = val-1 WHERE id >= x;
 END;$$;
-ERROR:  syntax error at or near "PROCEDURE"
-LINE 1: CREATE PROCEDURE mx_call_proc_tx(x int) LANGUAGE plpgsql AS ...
-               ^
 -- before distribution ...
 CALL multi_mx_call.mx_call_proc_tx(10);
-ERROR:  syntax error at or near "CALL"
-LINE 1: CALL multi_mx_call.mx_call_proc_tx(10);
-        ^
 -- after distribution ...
 select create_distributed_function('mx_call_proc_tx(int)', '$1', 'mx_call_dist_table_1');
-ERROR:  function "mx_call_proc_tx(int)" does not exist
-LINE 1: select create_distributed_function('mx_call_proc_tx(int)', '...
-                                           ^
+DEBUG:  switching to sequential query execution mode
+DETAIL:  A distributed function is created. To make sure subsequent commands see the type correctly we need to make sure to use only one connection for all future commands
+ create_distributed_function 
+-----------------------------
+ 
+(1 row)
+
 CALL multi_mx_call.mx_call_proc_tx(20);
-ERROR:  syntax error at or near "CALL"
-LINE 1: CALL multi_mx_call.mx_call_proc_tx(20);
-        ^
+DEBUG:  pushing down the procedure
 SELECT id, val FROM mx_call_dist_table_1 ORDER BY id, val;
  id | val 
 ----+-----
@@ -248,7 +322,11 @@ SELECT id, val FROM mx_call_dist_table_1 ORDER BY id, val;
   4 |   5
   6 |   5
   9 |   2
-(5 rows)
+ 10 |  -2
+ 11 |   3
+ 20 |  -2
+ 21 |   3
+(9 rows)
 
 -- Test that we properly propagate errors raised from procedures.
 CREATE PROCEDURE mx_call_proc_raise(x int) LANGUAGE plpgsql AS $$
@@ -256,17 +334,21 @@ BEGIN
     RAISE WARNING 'warning';
     RAISE EXCEPTION 'error';
 END;$$;
-ERROR:  syntax error at or near "PROCEDURE"
-LINE 1: CREATE PROCEDURE mx_call_proc_raise(x int) LANGUAGE plpgsql ...
-               ^
 select create_distributed_function('mx_call_proc_raise(int)', '$1', 'mx_call_dist_table_1');
-ERROR:  function "mx_call_proc_raise(int)" does not exist
-LINE 1: select create_distributed_function('mx_call_proc_raise(int)'...
-                                           ^
+DEBUG:  switching to sequential query execution mode
+DETAIL:  A distributed function is created. To make sure subsequent commands see the type correctly we need to make sure to use only one connection for all future commands
+ create_distributed_function 
+-----------------------------
+ 
+(1 row)
+
 call multi_mx_call.mx_call_proc_raise(2);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc_raise(2);
-        ^
+DEBUG:  pushing down the procedure
+DEBUG:  warning
+DETAIL:  WARNING from localhost:57638
+ERROR:  error
+CONTEXT:  while executing command on localhost:57638
+PL/pgSQL function multi_mx_call.mx_call_proc_raise(integer) line 4 at RAISE
 -- Test that we don't propagate to non-metadata worker nodes
 select stop_metadata_sync_to_node('localhost', :worker_1_port);
  stop_metadata_sync_to_node 
@@ -281,9 +363,18 @@ select stop_metadata_sync_to_node('localhost', :worker_2_port);
 (1 row)
 
 call multi_mx_call.mx_call_proc(2, 0);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, 0);
-        ^
+DEBUG:  there is no worker node with metadata
+DEBUG:  generating subplan 27_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 27 query after replacing subqueries and CTEs: SELECT (3 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('27_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 29
+(1 row)
+
 SET client_min_messages TO NOTICE;
 select start_metadata_sync_to_node('localhost', :worker_1_port);
  start_metadata_sync_to_node 
@@ -318,20 +409,41 @@ DETAIL:  A distributed function is created. To make sure subsequent commands see
 
 -- non-const distribution parameters cannot be pushed down
 call multi_mx_call.mx_call_proc(2, mx_call_add(3, 4));
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(2, mx_call_add(3, 4));
-        ^
+DEBUG:  distribution argument value must be a constant
+DEBUG:  generating subplan 1_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 1 query after replacing subqueries and CTEs: SELECT (3 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('1_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 29
+(1 row)
+
 -- non-const parameter can be pushed down
 call multi_mx_call.mx_call_proc(multi_mx_call.mx_call_add(3, 4), 2);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(multi_mx_call.mx_call_add(3,...
-        ^
+DEBUG:  pushing down the procedure
+ y  
+----
+ 33
+(1 row)
+
 -- volatile parameter cannot be pushed down
 call multi_mx_call.mx_call_proc(floor(random())::int, 2);
-ERROR:  syntax error at or near "call"
-LINE 1: call multi_mx_call.mx_call_proc(floor(random())::int, 2);
-        ^
+DEBUG:  arguments in a distributed stored procedure must be constant expressions
+DEBUG:  generating subplan 3_1 for subquery SELECT sum((t1.val OPERATOR(pg_catalog.+) t2.val)) AS sum FROM (multi_mx_call.mx_call_dist_table_1 t1 JOIN multi_mx_call.mx_call_dist_table_2 t2 ON ((t1.id OPERATOR(pg_catalog.=) t2.id)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+DEBUG:  Plan 3 query after replacing subqueries and CTEs: SELECT (1 OPERATOR(pg_catalog.+) (SELECT intermediate_result.sum FROM read_intermediate_result('3_1'::text, 'binary'::citus_copy_format) intermediate_result(sum bigint)))
+CONTEXT:  SQL statement "SELECT y + (select sum(t1.val + t2.val) from multi_mx_call.mx_call_dist_table_1 t1 join multi_mx_call.mx_call_dist_table_2 t2 on t1.id = t2.id)"
+PL/pgSQL function mx_call_proc(integer,integer) line 8 at assignment
+ y  
+----
+ 27
+(1 row)
+
 reset client_min_messages;
 \set VERBOSITY terse
 drop schema multi_mx_call cascade;
-NOTICE:  drop cascades to 5 other objects
+NOTICE:  drop cascades to 9 other objects
