@@ -1266,7 +1266,7 @@ GetModifyConnections(Task *task, bool markCritical)
 	foreach(taskPlacementCell, taskPlacementList)
 	{
 		ShardPlacement *taskPlacement = (ShardPlacement *) lfirst(taskPlacementCell);
-		int connectionFlags = 0;
+		int connectionFlags = CONNECTION_PER_PLACEMENT;
 		MultiConnection *multiConnection = NULL;
 		List *placementAccessList = NIL;
 		ShardPlacementAccess *placementModification = NULL;
