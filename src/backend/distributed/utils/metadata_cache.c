@@ -173,6 +173,11 @@ static WorkerNode **WorkerNodeArray = NULL;
 static int WorkerNodeCount = 0;
 static bool workerNodeHashValid = false;
 
+/* cached coordinator node */
+static WorkerNode CoordinatorNodeCache;
+static bool CoordinatorNodeCacheValid = false;
+
+
 /* default value is -1, for coordinator it's 0 and for worker nodes > 0 */
 static int32 LocalGroupId = -1;
 
@@ -2942,6 +2947,31 @@ GetWorkerNodeHash(void)
 
 
 /*
+ * GetCoordinatorNode returns the WorkerNode structure for the coordinator node,
+ * and returns NULL if not found. If not found, raises a log message with the
+ * given elevel.
+ */
+WorkerNode * GetCoordinatorNode(int elevel)
+{
+	PrepareWorkerNodeCache();
+
+	if (!CoordinatorNodeCacheValid)
+	{
+		if (elevel != 0)
+		{
+			ereport(elevel, (errmsg("coordinator node is not set."),
+							errhint("Use set_coordinator(name, port) to "
+									"set coordinator")));
+		}
+
+		return NULL;
+	}
+
+	return &CoordinatorNodeCache;
+}
+
+
+/*
  * PrepareWorkerNodeCache makes sure the worker node data from pg_dist_node is cached,
  * if it is not already cached.
  */
@@ -2974,7 +3004,8 @@ PrepareWorkerNodeCache(void)
 /*
  * InitializeWorkerNodeCache initialize the infrastructure for the worker node cache.
  * The function reads the worker nodes from the metadata table, adds them to the hash and
- * finally registers an invalidation callback.
+ * finally registers an invalidation callback. It also sets the coordinator node cache
+ * if any node with groupId == 0 is found.
  */
 static void
 InitializeWorkerNodeCache(void)
@@ -2992,6 +3023,8 @@ InitializeWorkerNodeCache(void)
 
 	InitializeCaches();
 
+	CoordinatorNodeCacheValid = false;
+
 	/*
 	 * Create the hash that holds the worker nodes. The key is the combination of
 	 * nodename and nodeport, instead of the unique nodeid because worker nodes are
@@ -3008,7 +3041,7 @@ InitializeWorkerNodeCache(void)
 	newWorkerNodeHash = hash_create("Worker Node Hash", maxTableSize, &info, hashFlags);
 
 	/* read the list from pg_dist_node */
-	workerNodeList = ReadWorkerNodes(includeNodesFromOtherClusters);
+	workerNodeList = ReadDistNode(includeNodesFromOtherClusters);
 
 	newWorkerNodeCount = list_length(workerNodeList);
 	newWorkerNodeArray = MemoryContextAlloc(MetadataCacheMemoryContext,
@@ -3021,6 +3054,22 @@ InitializeWorkerNodeCache(void)
 		WorkerNode *currentNode = lfirst(workerNodeCell);
 		void *hashKey = NULL;
 		bool handleFound = false;
+
+		if (currentNode->groupId == 0)
+		{
+			if (CoordinatorNodeCacheValid)
+			{
+				ereport(WARNING, (errmsg("multiple lines for coordinator node: \"%s:%u\"",
+										 workerNode->workerName,
+										 workerNode->workerPort)));
+			}
+
+			memcpy(&CoordinatorNodeCache, currentNode, sizeof(WorkerNode));
+			CoordinatorNodeCacheValid = true;
+
+			pfree(currentNode);
+			continue;
+		}
 
 		/* search for the worker node in the hash, and then insert the values */
 		hashKey = (void *) currentNode;

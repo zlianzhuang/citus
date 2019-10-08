@@ -36,6 +36,8 @@
 
 
 /* local function forward declarations */
+static void ReplicateReferenceTablesToNode(List *referenceTableList,
+										  char *nodeName, int nodePort);
 static void ReplicateSingleShardTableToAllWorkers(Oid relationId);
 static void ReplicateShardToAllWorkers(ShardInterval *shardInterval);
 static void ReplicateShardToNode(ShardInterval *shardInterval, char *nodeName,
@@ -44,6 +46,7 @@ static void ConvertToReferenceTableMetadata(Oid relationId, uint64 shardId);
 
 /* exports for SQL callable functions */
 PG_FUNCTION_INFO_V1(upgrade_to_reference_table);
+PG_FUNCTION_INFO_V1(replicate_reference_table_to_coordinator);
 
 
 /*
@@ -118,17 +121,63 @@ upgrade_to_reference_table(PG_FUNCTION_ARGS)
 }
 
 
+Datum
+replicate_reference_table_to_coordinator(PG_FUNCTION_ARGS)
+{
+	Oid relationId = PG_GETARG_OID(0);
+	bool isReferenceTable = false;
+	List *shardIntervalList = NIL;
+	ShardInterval *shardInterval = NULL;
+	WorkerNode *coordinator = NULL;
+
+	CheckCitusVersion(ERROR);
+	EnsureCoordinator();
+	EnsureTableOwner(relationId);
+
+	if (IsDistributedTable(relationId))
+	{
+		DistTableCacheEntry *tableEntry = DistributedTableCacheEntry(relationId);
+		isReferenceTable = (tableEntry->partitionMethod == DISTRIBUTE_BY_NONE);
+	}
+
+	if (!isReferenceTable)
+	{
+		char *relationName = get_rel_name(relationId);
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("\"%s\" is not a reference table", relationName)));
+	}
+
+	coordinator = GetCoordinatorNode(ERROR);
+	ReplicateReferenceTablesToNode(list_make1_oid(relationId),
+								   coordinator->workerName,
+								   coordinator->workerPort);
+
+	PG_RETURN_VOID();
+}
+
+
 /*
  * ReplicateAllReferenceTablesToNode function finds all reference tables and
- * replicates them to the given worker node. It also modifies pg_dist_colocation
- * table to update the replication factor column when necessary. This function
- * skips reference tables if that node already has healthy placement of that
- * reference table to prevent unnecessary data transfer.
+ * replicates them to the given worker node.
  */
 void
 ReplicateAllReferenceTablesToNode(char *nodeName, int nodePort)
 {
 	List *referenceTableList = ReferenceTableOidList();
+	ReplicateReferenceTablesToNode(referenceTableList, nodeName, nodePort);
+}
+
+
+/*
+ * ReplicateAllReferenceTablesToNode replicates the given reference tables to
+ * the given worker node. It also modifies pg_dist_colocation table to update
+ * the replication factor column when necessary. It skips reference tables if
+ * that node already has healthy placement of that reference table to prevent
+ * unnecessary data transfer.
+ */
+static void
+ReplicateReferenceTablesToNode(List *referenceTableList, char *nodeName, int nodePort)
+{
 	ListCell *referenceTableCell = NULL;
 	uint32 workerCount = ActivePrimaryNodeCount();
 
@@ -360,7 +409,8 @@ static void
 ConvertToReferenceTableMetadata(Oid relationId, uint64 shardId)
 {
 	uint32 currentColocationId = TableColocationId(relationId);
-	uint32 newColocationId = CreateReferenceTableColocationId();
+	bool replicatedToCoordinator = false;
+	uint32 newColocationId = CreateReferenceTableColocationId(replicatedToCoordinator);
 	Var *distributionColumn = NULL;
 	char shardStorageType = ShardStorageType(relationId);
 	text *shardMinValue = NULL;
@@ -381,25 +431,34 @@ ConvertToReferenceTableMetadata(Oid relationId, uint64 shardId)
 /*
  * CreateReferenceTableColocationId creates a new co-location id for reference tables and
  * writes it into pg_dist_colocation, then returns the created co-location id. Since there
- * can be only one colocation group for all kinds of reference tables, if a co-location id
- * is already created for reference tables, this function returns it without creating
- * anything.
+ * can be only two colocation groups for all kinds of reference tables (one for ones with
+ * replicas only on workers, another for ones which also have a replica on coordinator),
+ * if a co-location id is already created for reference tables, this function returns it
+ * without creating anything.
  */
 uint32
-CreateReferenceTableColocationId()
+CreateReferenceTableColocationId(bool replicatedToCoordinator)
 {
 	uint32 colocationId = INVALID_COLOCATION_ID;
-	List *workerNodeList = ActivePrimaryNodeList(ShareLock);
 	int shardCount = 1;
-	int replicationFactor = list_length(workerNodeList);
 	Oid distributionColumnType = InvalidOid;
+	int workerCount = ActivePrimaryNodeCount();
+
+	int replicationFactor = workerCount;
+	if (replicatedToCoordinator)
+	{
+		replicationFactor++;
+	}
 
 	/* check for existing colocations */
 	colocationId = ColocationId(shardCount, replicationFactor, distributionColumnType);
 	if (colocationId == INVALID_COLOCATION_ID)
 	{
-		colocationId = CreateColocationGroup(shardCount, replicationFactor,
-											 distributionColumnType);
+		uint32 colocationIds[2] = {
+			CreateColocationGroup(shardCount, workerCount, distributionColumnType),
+			CreateColocationGroup(shardCount, workerCount + 1, distributionColumnType)
+		};
+		colocationId = colocationIds[replicatedToCoordinator ? 1 : 0];
 	}
 
 	return colocationId;

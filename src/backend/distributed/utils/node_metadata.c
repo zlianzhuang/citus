@@ -76,6 +76,7 @@ static void SetNodeState(char *nodeName, int32 nodePort, bool isActive);
 static HeapTuple GetNodeTuple(char *nodeName, int32 nodePort);
 static int32 GetNextGroupId(void);
 static int GetNextNodeId(void);
+static bool NodeIsCoordinator(char *nodeName, int nodePort);
 static void InsertNodeRow(int nodeid, char *nodename, int32 nodeport, NodeMetadata
 						  *nodeMetadata);
 static void DeleteNodeRow(char *nodename, int32 nodeport);
@@ -344,14 +345,40 @@ master_activate_node(PG_FUNCTION_ARGS)
 uint32
 GroupForNode(char *nodeName, int nodePort)
 {
-	WorkerNode *workerNode = FindWorkerNode(nodeName, nodePort);
+	WorkerNode *workerNode = NULL;
 
+	if (NodeIsCoordinator(nodeName, nodePort))
+	{
+		return 0;
+	}
+	
+	workerNode = FindWorkerNode(nodeName, nodePort);
 	if (workerNode == NULL)
 	{
 		ereport(ERROR, (errmsg("node at \"%s:%u\" does not exist", nodeName, nodePort)));
 	}
 
 	return workerNode->groupId;
+}
+
+
+/*
+ * NodeIsCoordinator returns true if the given node is the coordinator node.
+ */
+static bool
+NodeIsCoordinator(char *nodeName, int nodePort)
+{
+	WorkerNode *coordinator = GetCoordinatorNode(0);
+	if (coordinator != NULL)
+	{
+		if (strncmp(coordinator->workerName, nodeName, WORKER_LENGTH) &&
+			coordinator->workerPort == nodePort)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 
@@ -856,6 +883,15 @@ FindWorkerNodeAnyCluster(char *nodeName, int32 nodePort)
 	if (heapTuple != NULL)
 	{
 		workerNode = TupleToWorkerNode(tupleDescriptor, heapTuple);
+
+		/*
+		 * We also keep the coordinator node in pg_dist_node with groupId == 0,
+		 * which is not a workerNode.
+		 */
+		if (workerNode->groupId == 0)
+		{
+			workerNode = NULL;
+		}
 	}
 
 	heap_close(pgDistNode, NoLock);
@@ -864,7 +900,7 @@ FindWorkerNodeAnyCluster(char *nodeName, int32 nodePort)
 
 
 /*
- * ReadWorkerNodes iterates over pg_dist_node table, converts each row
+ * ReadDistNode iterates over pg_dist_node table, converts each row
  * into it's memory representation (i.e., WorkerNode) and adds them into
  * a list. Lastly, the list is returned to the caller.
  *
@@ -872,7 +908,7 @@ FindWorkerNodeAnyCluster(char *nodeName, int32 nodePort)
  * by includeNodesFromOtherClusters.
  */
 List *
-ReadWorkerNodes(bool includeNodesFromOtherClusters)
+ReadDistNode(bool includeNodesFromOtherClusters)
 {
 	SysScanDesc scanDescriptor = NULL;
 	ScanKeyData scanKey[1];

@@ -1292,7 +1292,7 @@ UpdateShardPlacementState(uint64 placementId, char shardState)
  * cache after updating replication factor.
  */
 void
-UpdateColocationGroupReplicationFactorForReferenceTables(int replicationFactor)
+UpdateColocationGroupReplicationFactorForReferenceTables(int workerCount)
 {
 	Relation pgDistColocation = NULL;
 	SysScanDesc scanDescriptor = NULL;
@@ -1330,8 +1330,8 @@ UpdateColocationGroupReplicationFactorForReferenceTables(int replicationFactor)
 		memset(isnull, false, sizeof(isnull));
 		memset(values, 0, sizeof(values));
 
-		values[Anum_pg_dist_colocation_replicationfactor - 1] = Int32GetDatum(
-			replicationFactor);
+		values[Anum_pg_dist_colocation_replicationfactor - 1] =
+			Int32GetDatum(workerCount);
 		replace[Anum_pg_dist_colocation_replicationfactor - 1] = true;
 
 		newHeapTuple = heap_modify_tuple(heapTuple, tupleDescriptor, values, isnull,

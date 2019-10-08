@@ -562,7 +562,8 @@ ColocationIdForNewTable(Oid relationId, Var *distributionColumn,
 	}
 	else if (distributionMethod == DISTRIBUTE_BY_NONE)
 	{
-		return CreateReferenceTableColocationId();
+		bool replicatedToCoordinator = false;
+		return CreateReferenceTableColocationId(replicatedToCoordinator);
 	}
 	else
 	{
