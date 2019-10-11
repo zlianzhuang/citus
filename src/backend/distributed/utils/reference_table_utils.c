@@ -127,8 +127,6 @@ replicate_reference_table_to_coordinator(PG_FUNCTION_ARGS)
 {
 	Oid relationId = PG_GETARG_OID(0);
 	bool isReferenceTable = false;
-	List *shardIntervalList = NIL;
-	ShardInterval *shardInterval = NULL;
 	WorkerNode *coordinator = NULL;
 	bool nodeIsCoordinator = true;
 
