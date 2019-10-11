@@ -76,7 +76,6 @@ static void SetNodeState(char *nodeName, int32 nodePort, bool isActive);
 static HeapTuple GetNodeTuple(char *nodeName, int32 nodePort);
 static int32 GetNextGroupId(void);
 static int GetNextNodeId(void);
-static bool NodeIsCoordinator(char *nodeName, int nodePort);
 static void InsertNodeRow(int nodeid, char *nodename, int32 nodeport, NodeMetadata
 						  *nodeMetadata);
 static void DeleteNodeRow(char *nodename, int32 nodeport);
@@ -351,7 +350,7 @@ GroupForNode(char *nodeName, int nodePort)
 	{
 		return 0;
 	}
-	
+
 	workerNode = FindWorkerNode(nodeName, nodePort);
 	if (workerNode == NULL)
 	{
@@ -365,7 +364,7 @@ GroupForNode(char *nodeName, int nodePort)
 /*
  * NodeIsCoordinator returns true if the given node is the coordinator node.
  */
-static bool
+bool
 NodeIsCoordinator(char *nodeName, int nodePort)
 {
 	WorkerNode *coordinator = GetCoordinatorNode(0);

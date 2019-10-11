@@ -37,7 +37,8 @@
 
 /* local function forward declarations */
 static void ReplicateReferenceTablesToNode(List *referenceTableList,
-										  char *nodeName, int nodePort);
+										   char *nodeName, int nodePort,
+										   bool nodeIsCoordinator);
 static void ReplicateSingleShardTableToAllWorkers(Oid relationId);
 static void ReplicateShardToAllWorkers(ShardInterval *shardInterval);
 static void ReplicateShardToNode(ShardInterval *shardInterval, char *nodeName,
@@ -129,6 +130,7 @@ replicate_reference_table_to_coordinator(PG_FUNCTION_ARGS)
 	List *shardIntervalList = NIL;
 	ShardInterval *shardInterval = NULL;
 	WorkerNode *coordinator = NULL;
+	bool nodeIsCoordinator = true;
 
 	CheckCitusVersion(ERROR);
 	EnsureCoordinator();
@@ -150,7 +152,8 @@ replicate_reference_table_to_coordinator(PG_FUNCTION_ARGS)
 	coordinator = GetCoordinatorNode(ERROR);
 	ReplicateReferenceTablesToNode(list_make1_oid(relationId),
 								   coordinator->workerName,
-								   coordinator->workerPort);
+								   coordinator->workerPort,
+								   nodeIsCoordinator);
 
 	PG_RETURN_VOID();
 }
@@ -164,7 +167,10 @@ void
 ReplicateAllReferenceTablesToNode(char *nodeName, int nodePort)
 {
 	List *referenceTableList = ReferenceTableOidList();
-	ReplicateReferenceTablesToNode(referenceTableList, nodeName, nodePort);
+	bool isCoordinator = NodeIsCoordinator(nodeName, nodePort);
+	ReplicateReferenceTablesToNode(referenceTableList,
+								   nodeName, nodePort,
+								   isCoordinator);
 }
 
 
@@ -176,7 +182,9 @@ ReplicateAllReferenceTablesToNode(char *nodeName, int nodePort)
  * unnecessary data transfer.
  */
 static void
-ReplicateReferenceTablesToNode(List *referenceTableList, char *nodeName, int nodePort)
+ReplicateReferenceTablesToNode(List *referenceTableList,
+							   char *nodeName, int nodePort,
+							   bool nodeIsCoordinator)
 {
 	ListCell *referenceTableCell = NULL;
 	uint32 workerCount = ActivePrimaryNodeCount();
@@ -218,16 +226,24 @@ ReplicateReferenceTablesToNode(List *referenceTableList, char *nodeName, int nod
 			ReplicateShardToNode(shardInterval, nodeName, nodePort);
 		}
 
-		/* create foreign constraints between reference tables */
-		foreach(referenceShardIntervalCell, referenceShardIntervalList)
+		/*
+		 * Create foreign constraints between reference tables. We don't create
+		 * foreign constraints on the coordinator since: (1) Referenced table
+		 * might not be replicated to the coordinator, (2) Foreign constraints
+		 * are enforced in workers anyway.
+		 */
+		if (!nodeIsCoordinator)
 		{
-			ShardInterval *shardInterval =
-				(ShardInterval *) lfirst(referenceShardIntervalCell);
-			char *tableOwner = TableOwner(shardInterval->relationId);
-			List *commandList = CopyShardForeignConstraintCommandList(shardInterval);
+			foreach(referenceShardIntervalCell, referenceShardIntervalList)
+			{
+				ShardInterval *shardInterval =
+					(ShardInterval *) lfirst(referenceShardIntervalCell);
+				char *tableOwner = TableOwner(shardInterval->relationId);
+				List *commandList = CopyShardForeignConstraintCommandList(shardInterval);
 
-			SendCommandListToWorkerInSingleTransaction(nodeName, nodePort, tableOwner,
-													   commandList);
+				SendCommandListToWorkerInSingleTransaction(nodeName, nodePort, tableOwner,
+														   commandList);
+			}
 		}
 	}
 

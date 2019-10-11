@@ -2951,7 +2951,8 @@ GetWorkerNodeHash(void)
  * and returns NULL if not found. If not found, raises a log message with the
  * given elevel.
  */
-WorkerNode * GetCoordinatorNode(int elevel)
+WorkerNode *
+GetCoordinatorNode(int elevel)
 {
 	PrepareWorkerNodeCache();
 
@@ -2960,8 +2961,8 @@ WorkerNode * GetCoordinatorNode(int elevel)
 		if (elevel != 0)
 		{
 			ereport(elevel, (errmsg("coordinator node is not set."),
-							errhint("Use set_coordinator(name, port) to "
-									"set coordinator")));
+							 errhint("Use set_coordinator(name, port) to "
+									 "set coordinator")));
 		}
 
 		return NULL;
