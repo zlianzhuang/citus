@@ -364,7 +364,7 @@ NodeIsCoordinator(char *nodeName, int nodePort)
 	WorkerNode *coordinator = GetCoordinatorNode(0);
 	if (coordinator != NULL)
 	{
-		if (strncmp(coordinator->workerName, nodeName, WORKER_LENGTH) &&
+		if (strncmp(coordinator->workerName, nodeName, WORKER_LENGTH) == 0 &&
 			coordinator->workerPort == nodePort)
 		{
 			return true;

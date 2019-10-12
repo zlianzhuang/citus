@@ -620,6 +620,11 @@ LookupNodeForGroup(int32 groupId)
 
 	PrepareWorkerNodeCache();
 
+	if (groupId == 0)
+	{
+		return GetCoordinatorNode(ERROR);
+	}
+
 	for (workerNodeIndex = 0; workerNodeIndex < WorkerNodeCount; workerNodeIndex++)
 	{
 		WorkerNode *workerNode = WorkerNodeArray[workerNodeIndex];

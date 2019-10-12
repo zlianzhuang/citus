@@ -1,0 +1,72 @@
+--
+-- REPLICATE_REF_TABLES_ON_COORDINATOR
+--
+CREATE SCHEMA replicate_ref_to_coordinator;
+SET search_path TO 'replicate_ref_to_coordinator';
+SET citus.shard_replication_factor TO 1;
+SET citus.shard_count TO 4;
+SET citus.next_shard_id TO 8000000;
+SET citus.next_placement_id TO 8000000;
+--- enable logging to see which tasks are executed locally
+SET client_min_messages TO LOG;
+SET citus.log_local_commands TO ON;
+CREATE TABLE squares(a int, b int);
+SELECT create_reference_table('squares');
+ create_reference_table 
+------------------------
+ 
+(1 row)
+
+INSERT INTO squares SELECT i, i * i FROM generate_series(1, 10) i;
+SELECT groupid FROM pg_dist_placement 
+WHERE shardid IN (SELECT shardid FROM pg_dist_shard WHERE logicalrelid='squares'::regclass::oid)
+ORDER BY groupid;
+ groupid 
+---------
+      14
+      16
+(2 rows)
+
+-- should be executed on a worker
+SELECT count(*) FROM squares;
+ count 
+-------
+    10
+(1 row)
+
+-- should error out
+SELECT replicate_reference_table_to_coordinator('squares');
+ERROR:  coordinator node is not set.
+HINT:  Use set_coordinator(name, port) to set coordinator
+INSERT INTO pg_dist_node(nodeid, groupid, nodename, nodeport, noderack, 
+                         hasmetadata, isactive, noderole, nodecluster, metadatasynced)
+    VALUES (0, 0, 'localhost', :master_port, 'default', true, true, 'primary', 'default', true);
+-- try again
+SELECT replicate_reference_table_to_coordinator('squares');
+NOTICE:  Replicating reference table "squares" to the node localhost:57636
+ replicate_reference_table_to_coordinator 
+------------------------------------------
+ 
+(1 row)
+
+SELECT groupid FROM pg_dist_placement 
+WHERE shardid IN (SELECT shardid FROM pg_dist_shard WHERE logicalrelid='squares'::regclass::oid)
+ORDER BY groupid;
+ groupid 
+---------
+       0
+      14
+      16
+(3 rows)
+
+-- should be executed locally
+SELECT count(*) FROM squares;
+LOG:  executing the command locally: SELECT count(*) AS count FROM replicate_ref_to_coordinator.squares_8000000 squares
+ count 
+-------
+    10
+(1 row)
+
+DROP TABLE squares;
+DROP SCHEMA replicate_ref_to_coordinator CASCADE;
+SET search_path TO DEFAULT;
