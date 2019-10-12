@@ -50,7 +50,7 @@ static int CompareShardPlacementsByNode(const void *leftElement,
 static void UpdateRelationColocationGroup(Oid distributedRelationId, uint32 colocationId);
 static List * ColocationGroupTableList(Oid colocationId);
 static void DeleteColocationGroup(uint32 colocationId);
-
+static bool ReferenceTablesColocated(Oid leftOid, Oid rightOid);
 
 /* exports for SQL callable functions */
 PG_FUNCTION_INFO_V1(mark_tables_colocated);
@@ -732,6 +732,12 @@ TablesColocated(Oid leftDistributedTableId, Oid rightDistributedTableId)
 		return true;
 	}
 
+	if (PartitionMethod(leftDistributedTableId) == DISTRIBUTE_BY_NONE &&
+		PartitionMethod(rightDistributedTableId) == DISTRIBUTE_BY_NONE)
+	{
+		return ReferenceTablesColocated(leftDistributedTableId, rightDistributedTableId);
+	}
+
 	leftColocationId = TableColocationId(leftDistributedTableId);
 	rightColocationId = TableColocationId(rightDistributedTableId);
 	if (leftColocationId == INVALID_COLOCATION_ID ||
@@ -741,6 +747,29 @@ TablesColocated(Oid leftDistributedTableId, Oid rightDistributedTableId)
 	}
 
 	return leftColocationId == rightColocationId;
+}
+
+
+/*
+ * ReferenceTablesColocated returns whether the given two reference tables
+ * are colocated or not.
+ */
+static bool
+ReferenceTablesColocated(Oid leftOid, Oid rightOid)
+{
+	List *leftShardIntervalList = LoadShardIntervalList(leftOid);
+	List *rightShardIntervalList = LoadShardIntervalList(rightOid);
+	ShardInterval *leftShardInterval = linitial(leftShardIntervalList);
+	ShardInterval *rightShardInterval = linitial(rightShardIntervalList);
+	List *leftPlacementList = ShardPlacementList(leftShardInterval->shardId);
+	List *rightPlacementList = ShardPlacementList(rightShardInterval->shardId);
+
+	/*
+	 * All tables are colocated to worker nodes, but some of them might also
+	 * have a replica on the coordinator. So colocation of two reference tables
+	 * are decided by whether their placement counts are equal or not.
+	 */
+	return list_length(leftPlacementList) == list_length(rightPlacementList);
 }
 
 

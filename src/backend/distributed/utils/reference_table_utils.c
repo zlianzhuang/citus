@@ -467,7 +467,8 @@ CreateReferenceTableColocationId(bool replicatedToCoordinator)
 	colocationId = ColocationId(shardCount, replicationFactor, distributionColumnType);
 	if (colocationId == INVALID_COLOCATION_ID)
 	{
-		colocationId = CreateColocationGroup(shardCount, workerCount, distributionColumnType);
+		colocationId = CreateColocationGroup(shardCount, workerCount,
+											 distributionColumnType);
 	}
 
 	return colocationId;
