@@ -174,10 +174,8 @@ ReplicateAllReferenceTablesToNode(char *nodeName, int nodePort)
 
 /*
  * ReplicateAllReferenceTablesToNode replicates the given reference tables to
- * the given worker node. It also modifies pg_dist_colocation table to update
- * the replication factor column when necessary. It skips reference tables if
- * that node already has healthy placement of that reference table to prevent
- * unnecessary data transfer.
+ * the given worker node. It skips reference tables if that node already has
+ * healthy placement of that reference table to prevent unnecessary data transfer.
  */
 static void
 ReplicateReferenceTablesToNode(List *referenceTableList,
@@ -185,7 +183,6 @@ ReplicateReferenceTablesToNode(List *referenceTableList,
 							   bool nodeIsCoordinator)
 {
 	ListCell *referenceTableCell = NULL;
-	uint32 workerCount = ActivePrimaryNodeCount();
 
 	/* if there is no reference table, we do not need to replicate anything */
 	if (list_length(referenceTableList) > 0)
@@ -244,12 +241,6 @@ ReplicateReferenceTablesToNode(List *referenceTableList,
 			}
 		}
 	}
-
-	/*
-	 * Update replication factor column for colocation group of reference tables
-	 * so that worker count will be equal to replication factor again.
-	 */
-	UpdateColocationGroupReplicationFactorForReferenceTables(workerCount);
 }
 
 

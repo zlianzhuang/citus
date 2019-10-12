@@ -303,12 +303,6 @@ master_disable_node(PG_FUNCTION_ARGS)
 
 	SetNodeState(nodeName, nodePort, isActive);
 
-	if (WorkerNodeIsPrimary(workerNode))
-	{
-		UpdateColocationGroupReplicationFactorForReferenceTables(
-			ActivePrimaryNodeCount());
-	}
-
 	PG_RETURN_VOID();
 }
 
@@ -993,12 +987,6 @@ RemoveNodeFromCluster(char *nodeName, int32 nodePort)
 	}
 
 	DeleteNodeRow(nodeName, nodePort);
-
-	if (WorkerNodeIsPrimary(workerNode))
-	{
-		UpdateColocationGroupReplicationFactorForReferenceTables(
-			ActivePrimaryNodeCount());
-	}
 
 	nodeDeleteCommand = NodeDeleteCommand(deletedNodeId);
 
