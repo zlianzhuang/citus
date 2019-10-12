@@ -445,10 +445,9 @@ ConvertToReferenceTableMetadata(Oid relationId, uint64 shardId)
 /*
  * CreateReferenceTableColocationId creates a new co-location id for reference tables and
  * writes it into pg_dist_colocation, then returns the created co-location id. Since there
- * can be only two colocation groups for all kinds of reference tables (one for ones with
- * replicas only on workers, another for ones which also have a replica on coordinator),
- * if a co-location id is already created for reference tables, this function returns it
- * without creating anything.
+ * can be only one colocation group for all kinds of reference tables, if a co-location id
+ * is already created for reference tables, this function returns it without creating
+ * anything.
  */
 uint32
 CreateReferenceTableColocationId(bool replicatedToCoordinator)
@@ -468,11 +467,7 @@ CreateReferenceTableColocationId(bool replicatedToCoordinator)
 	colocationId = ColocationId(shardCount, replicationFactor, distributionColumnType);
 	if (colocationId == INVALID_COLOCATION_ID)
 	{
-		uint32 colocationIds[2] = {
-			CreateColocationGroup(shardCount, workerCount, distributionColumnType),
-			CreateColocationGroup(shardCount, workerCount + 1, distributionColumnType)
-		};
-		colocationId = colocationIds[replicatedToCoordinator ? 1 : 0];
+		colocationId = CreateColocationGroup(shardCount, workerCount, distributionColumnType);
 	}
 
 	return colocationId;
