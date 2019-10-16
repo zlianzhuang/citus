@@ -15,7 +15,6 @@
 #include "distributed/multi_logical_planner.h"
 #include "distributed/multi_logical_optimizer.h"
 #include "distributed/pg_dist_partition.h"
-#include "distributed/query_utils.h"
 #include "distributed/relation_restriction_equivalence.h"
 #include "nodes/nodeFuncs.h"
 #include "nodes/pg_list.h"
