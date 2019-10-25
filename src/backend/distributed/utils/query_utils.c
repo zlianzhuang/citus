@@ -40,12 +40,16 @@ ExtractRangeTableList(Node *node, ExtractRangeTableWalkerContext *context)
 	{
 		RangeTblEntry *rangeTable = (RangeTblEntry *) node;
 
-		/* make sure that we are extracting only relation entries if walkerMode is set to EXTRACT_RELATION_ENTRIES*/
+		/*
+		 * <ake sure that we are extracting only relation entries if walkerMode is set to
+		 * EXTRACT_RELATION_ENTRIES. We treat partitioned tables as relations thoughout
+		 * the code, so fetch them as well.
+		 */
 		if (walkerMode == EXTRACT_ALL_ENTRIES || (walkerMode ==
 												  EXTRACT_RELATION_ENTRIES &&
 												  rangeTable->rtekind == RTE_RELATION &&
-												  rangeTable->relkind ==
-												  RELKIND_RELATION))
+												  (rangeTable->relkind == RELKIND_RELATION ||
+												   rangeTable->relkind == RELKIND_PARTITIONED_TABLE)))
 		{
 			(*rangeTableRelationList) = lappend(*rangeTableRelationList, rangeTable);
 		}
