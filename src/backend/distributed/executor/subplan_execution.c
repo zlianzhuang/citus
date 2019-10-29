@@ -85,27 +85,6 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	intermediateResultsHash = hash_create("Intermediate results hash",
 										  64, &info, hashFlags);
 
-	/* TODO: move all this logic to somewhere else */
-	/* calculate where each subPlan should go */
-	foreach(subPlanCell, subPlanList)
-	{
-		DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);
-		CustomScan *customScan = FetchCitusCustomScanIfExists(subPlan->plan->planTree);
-
-		/* TODO: improve this check */
-		if (customScan)
-		{
-			DistributedPlan *distributedPlanOfSubPlan = GetDistributedPlan(customScan);
-			RecordSubplanExecutionsOnNodes(intermediateResultsHash,
-										   distributedPlanOfSubPlan);
-		}
-	}
-
-	/*
-	 *  Top level query also could have used sub plans, include them.
-	 *
-	 *  TODO: make this loop more integrated with the above.
-	 */
 	RecordSubplanExecutionsOnNodes(intermediateResultsHash, distributedPlan);
 
 	/*
