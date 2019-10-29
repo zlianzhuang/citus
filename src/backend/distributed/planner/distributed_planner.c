@@ -601,11 +601,12 @@ FindUsedSubPlanList(DistributedPlan *plan)
 	List *rangeTableList = NIL;
 	ListCell *rangeTableCell = NULL;
 
-	if (plan->workerJob == NULL)
+	if (plan->workerJob == NULL && plan->insertSelectSubquery == NULL)
 	{
 		return NIL;
 	}
-	jobQuery = plan->workerJob->jobQuery;
+	jobQuery = plan->workerJob == NULL ? plan->insertSelectSubquery :
+			   plan->workerJob->jobQuery;
 	rangeTableList = ExtractRangeTableEntryList(jobQuery);
 
 	foreach(rangeTableCell, rangeTableList)

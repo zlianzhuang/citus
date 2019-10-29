@@ -44,6 +44,8 @@ static List * AppendAllAccessedNodesOfPlanToNodeList(List *workerNodeList,
 static CustomScan * FetchCustomScanIfExists(Plan *plan);
 static bool IsCitusCustomScan(Plan *plan);
 static bool IsCitusPlan(Plan *plan);
+static void RecordSubplanExecutionNodesForPlan(HTAB *intermediateResultsHash,
+											   DistributedPlan *distributedPlan);
 
 /*
  * ExecuteSubPlans executes a list of subplans from a distributed plan
@@ -56,8 +58,6 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	List *subPlanList = distributedPlan->subPlanList;
 	ListCell *subPlanCell = NULL;
 	List *nodeList = NIL;
-	List *topLevelUsedSubPlanNodes = distributedPlan->usedSubPlanNodeList;
-	ListCell *lc = NULL;
 
 	HTAB *intermediateResultsHash = NULL;
 	uint32 hashFlags = 0;
@@ -92,38 +92,12 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 		DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);
 		CustomScan *customScan = FetchCustomScanIfExists(subPlan->plan->planTree);
 
-
 		/* TODO: improve this check */
 		if (customScan)
 		{
 			DistributedPlan *distributedPlanOfSubPlan = GetDistributedPlan(customScan);
-			List *usedSubPlanList = distributedPlanOfSubPlan->usedSubPlanNodeList;
-			ListCell *usedSubPlanCell = NULL;
-
-			foreach(usedSubPlanCell, usedSubPlanList)
-			{
-				Const *resultIdConst = (Const *) lfirst(usedSubPlanCell);
-				Datum resultIdDatum = resultIdConst->constvalue;
-				char *resultId = TextDatumGetCString(resultIdDatum);
-				IntermediateResultHashKey key;
-				IntermediateResultHashEntry *entry = NULL;
-				bool found = false;
-
-				strlcpy(key.intermediate_result_id, resultId, NAMEDATALEN);
-				entry = hash_search(intermediateResultsHash, &key, HASH_ENTER, &found);
-
-				if (!found)
-				{
-					entry->nodeList = NIL;
-				}
-
-				/* TODO: skip if all nodes are already in nodeList */
-				entry->nodeList = AppendAllAccessedNodesOfPlanToNodeList(entry->nodeList,
-																		 distributedPlanOfSubPlan);
-
-				elog(DEBUG4, "subplan %s  is used in %lu", resultId,
-					 distributedPlanOfSubPlan->planId);
-			}
+			RecordSubplanExecutionNodesForPlan(intermediateResultsHash,
+											   distributedPlanOfSubPlan);
 		}
 	}
 
@@ -132,31 +106,7 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	 *
 	 *  TODO: make this loop more integrated with the above.
 	 */
-	foreach(lc, topLevelUsedSubPlanNodes)
-	{
-		Const *resultIdConst = (Const *) lfirst(lc);
-		Datum resultIdDatum = resultIdConst->constvalue;
-		char *resultId = TextDatumGetCString(resultIdDatum);
-
-		IntermediateResultHashKey key;
-		IntermediateResultHashEntry *entry = NULL;
-		bool found = false;
-
-		strlcpy(key.intermediate_result_id, resultId, NAMEDATALEN);
-		entry = hash_search(intermediateResultsHash, &key, HASH_ENTER, &found);
-
-		if (!found)
-		{
-			entry->nodeList = NIL;
-		}
-
-		/* TODO: skip if all nodes are already in nodeList */
-		entry->nodeList = AppendAllAccessedNodesOfPlanToNodeList(entry->nodeList,
-																 distributedPlan);
-
-		elog(DEBUG4, "subplan %s  is used in top query plan %ld", resultId,
-			 distributedPlan->planId);
-	}
+	RecordSubplanExecutionNodesForPlan(intermediateResultsHash, distributedPlan);
 
 	/*
 	 * Make sure that this transaction has a distributed transaction ID.
@@ -216,6 +166,54 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 
 		SubPlanLevel--;
 		FreeExecutorState(estate);
+	}
+}
+
+
+static void
+RecordSubplanExecutionNodesForPlan(HTAB *intermediateResultsHash,
+								   DistributedPlan *distributedPlan)
+{
+	List *usedSubPlanList = distributedPlan->usedSubPlanNodeList;
+	ListCell *usedSubPlanCell = NULL;
+
+	foreach(usedSubPlanCell, usedSubPlanList)
+	{
+		Const *resultIdConst = (Const *) lfirst(usedSubPlanCell);
+		Datum resultIdDatum = resultIdConst->constvalue;
+		char *resultId = TextDatumGetCString(resultIdDatum);
+		IntermediateResultHashKey key;
+		IntermediateResultHashEntry *entry = NULL;
+		bool found = false;
+
+		strlcpy(key.intermediate_result_id, resultId, NAMEDATALEN);
+		entry = hash_search(intermediateResultsHash, &key, HASH_ENTER, &found);
+
+		if (!found)
+		{
+			entry->nodeList = NIL;
+		}
+
+		/* TODO: skip if all nodes are already in nodeList */
+		entry->nodeList = AppendAllAccessedNodesOfPlanToNodeList(entry->nodeList,
+																 distributedPlan);
+
+		elog(DEBUG4, "subplan %s  is used in %lu", resultId,
+			 distributedPlan->planId);
+	}
+
+	List *subPlanList = distributedPlan->subPlanList;
+	ListCell *subPlanCell = NULL;
+	foreach(subPlanCell, subPlanList)
+	{
+		DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);
+		CustomScan *customScan = FetchCustomScanIfExists(subPlan->plan->planTree);
+		if (customScan)
+		{
+			DistributedPlan *distributedPlanOfSubPlan = GetDistributedPlan(customScan);
+			RecordSubplanExecutionNodesForPlan(intermediateResultsHash,
+											   distributedPlanOfSubPlan);
+		}
 	}
 }
 
