@@ -39,13 +39,13 @@ typedef struct IntermediateResultHashEntry
 } IntermediateResultHashEntry;
 
 
-static List * AppendAllAccessedNodesOfPlanToNodeList(List *workerNodeList,
-													 DistributedPlan *distributedPlan);
-static CustomScan * FetchCustomScanIfExists(Plan *plan);
+static List * AppendAllAccessedWorkerNodes(List *workerNodeList,
+										   DistributedPlan *distributedPlan);
+static CustomScan * FetchCitusCustomScanIfExists(Plan *plan);
 static bool IsCitusCustomScan(Plan *plan);
 static bool IsCitusPlan(Plan *plan);
-static void RecordSubplanExecutionNodesForPlan(HTAB *intermediateResultsHash,
-											   DistributedPlan *distributedPlan);
+static void RecordSubplanExecutionsOnNodes(HTAB *intermediateResultsHash,
+										   DistributedPlan *distributedPlan);
 
 /*
  * ExecuteSubPlans executes a list of subplans from a distributed plan
@@ -90,14 +90,14 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	foreach(subPlanCell, subPlanList)
 	{
 		DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);
-		CustomScan *customScan = FetchCustomScanIfExists(subPlan->plan->planTree);
+		CustomScan *customScan = FetchCitusCustomScanIfExists(subPlan->plan->planTree);
 
 		/* TODO: improve this check */
 		if (customScan)
 		{
 			DistributedPlan *distributedPlanOfSubPlan = GetDistributedPlan(customScan);
-			RecordSubplanExecutionNodesForPlan(intermediateResultsHash,
-											   distributedPlanOfSubPlan);
+			RecordSubplanExecutionsOnNodes(intermediateResultsHash,
+										   distributedPlanOfSubPlan);
 		}
 	}
 
@@ -106,7 +106,7 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	 *
 	 *  TODO: make this loop more integrated with the above.
 	 */
-	RecordSubplanExecutionNodesForPlan(intermediateResultsHash, distributedPlan);
+	RecordSubplanExecutionsOnNodes(intermediateResultsHash, distributedPlan);
 
 	/*
 	 * Make sure that this transaction has a distributed transaction ID.
@@ -170,9 +170,22 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 }
 
 
+/*
+ * RecordSubplanExecutionsOnNodes iterates over the usedSubPlanList,
+ * and for each entry, record the workerNodes that are accessed by
+ * the distributed plan.
+ *
+ * Later, we'll use this information while we broadcast the intermediate
+ * results to the worker nodes. The idea is that the intermediate result
+ * should only be broadcasted to the worker nodes that are accessed by
+ * the distributedPlan(s) that the subPlan is used in.
+ *
+ * Finally, the function recursively descends into the actual subplans
+ * of the input distributedPlan as well.
+ */
 static void
-RecordSubplanExecutionNodesForPlan(HTAB *intermediateResultsHash,
-								   DistributedPlan *distributedPlan)
+RecordSubplanExecutionsOnNodes(HTAB *intermediateResultsHash,
+							   DistributedPlan *distributedPlan)
 {
 	List *usedSubPlanList = distributedPlan->usedSubPlanNodeList;
 	ListCell *usedSubPlanCell = NULL;
@@ -198,23 +211,23 @@ RecordSubplanExecutionNodesForPlan(HTAB *intermediateResultsHash,
 		}
 
 		/* TODO: skip if all nodes are already in nodeList */
-		entry->nodeList = AppendAllAccessedNodesOfPlanToNodeList(entry->nodeList,
-																 distributedPlan);
+		entry->nodeList = AppendAllAccessedWorkerNodes(entry->nodeList,
+													   distributedPlan);
 
 		elog(DEBUG4, "subplan %s  is used in %lu", resultId,
 			 distributedPlan->planId);
 	}
 
-
+	/* descend into the subPlans */
 	foreach(subPlanCell, subPlanList)
 	{
 		DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);
-		CustomScan *customScan = FetchCustomScanIfExists(subPlan->plan->planTree);
+		CustomScan *customScan = FetchCitusCustomScanIfExists(subPlan->plan->planTree);
 		if (customScan)
 		{
 			DistributedPlan *distributedPlanOfSubPlan = GetDistributedPlan(customScan);
-			RecordSubplanExecutionNodesForPlan(intermediateResultsHash,
-											   distributedPlanOfSubPlan);
+			RecordSubplanExecutionsOnNodes(intermediateResultsHash,
+										   distributedPlanOfSubPlan);
 		}
 	}
 }
@@ -222,7 +235,7 @@ RecordSubplanExecutionNodesForPlan(HTAB *intermediateResultsHash,
 
 /* TODO: super inefficient, multiple recursions */
 static CustomScan *
-FetchCustomScanIfExists(Plan *plan)
+FetchCitusCustomScanIfExists(Plan *plan)
 {
 	if (plan == NULL)
 	{
@@ -236,12 +249,12 @@ FetchCustomScanIfExists(Plan *plan)
 
 	if (plan->lefttree != NULL && IsCitusPlan(plan->lefttree))
 	{
-		return FetchCustomScanIfExists(plan->lefttree);
+		return FetchCitusCustomScanIfExists(plan->lefttree);
 	}
 
 	if (plan->righttree != NULL && IsCitusPlan(plan->righttree))
 	{
-		return FetchCustomScanIfExists(plan->righttree);
+		return FetchCitusCustomScanIfExists(plan->righttree);
 	}
 
 	return NULL;
@@ -318,8 +331,7 @@ IsCitusCustomScan(Plan *plan)
  * TODO: this is super slow, improve the performance
  */
 static List *
-AppendAllAccessedNodesOfPlanToNodeList(List *workerNodeList,
-									   DistributedPlan *distributedPlan)
+AppendAllAccessedWorkerNodes(List *workerNodeList, DistributedPlan *distributedPlan)
 {
 	List *taskList = distributedPlan->workerJob->taskList;
 	ListCell *taskCell = NULL;

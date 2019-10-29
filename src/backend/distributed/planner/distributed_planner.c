@@ -71,7 +71,7 @@ static DistributedPlan * CreateDistributedPlan(uint64 planId, Query *originalQue
 											   bool hasUnresolvedParams,
 											   PlannerRestrictionContext *
 											   plannerRestrictionContext);
-static List * FindUsedSubPlanList(DistributedPlan *plan);
+static void FindSubPlansUsedInPlan(DistributedPlan *plan);
 static DeferredErrorMessage * DeferErrorIfPartitionTableNotSingleReplicated(Oid
 																			relationId);
 
@@ -521,7 +521,7 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 	/* TODO: move to a better place */
 	if (distributedPlan)
 	{
-		FindUsedSubPlanList(distributedPlan);
+		FindSubPlansUsedInPlan(distributedPlan);
 	}
 
 	/*
@@ -590,12 +590,12 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 
 
 /*
- * TODO: is it enough to check for jobQuery or jobQuery->rtable? We can
- * optimize this further if we check indivual joins between tables and
- * intermediate results.
+ * FindSubPlansUsedInPlan adds all the subplans used by the plan into
+ * plan->usedSubPlanNodeList field. Simply traversing the range table
+ * entries in the plan.
  */
-static List *
-FindUsedSubPlanList(DistributedPlan *plan)
+static void
+FindSubPlansUsedInPlan(DistributedPlan *plan)
 {
 	Query *jobQuery = NULL;
 	List *rangeTableList = NIL;
@@ -603,8 +603,9 @@ FindUsedSubPlanList(DistributedPlan *plan)
 
 	if (plan->workerJob == NULL && plan->insertSelectSubquery == NULL)
 	{
-		return NIL;
+		return;
 	}
+
 	jobQuery = plan->workerJob == NULL ? plan->insertSelectSubquery :
 			   plan->workerJob->jobQuery;
 	rangeTableList = ExtractRangeTableEntryList(jobQuery);
@@ -642,8 +643,6 @@ FindUsedSubPlanList(DistributedPlan *plan)
 														   resultIdConst);
 		}
 	}
-
-	return NIL;
 }
 
 
@@ -814,7 +813,7 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 												plannerRestrictionContext);
 		distributedPlan->subPlanList = subPlanList;
 
-		FindUsedSubPlanList(distributedPlan);
+		FindSubPlansUsedInPlan(distributedPlan);
 
 
 		return distributedPlan;
