@@ -177,6 +177,9 @@ RecordSubplanExecutionNodesForPlan(HTAB *intermediateResultsHash,
 	List *usedSubPlanList = distributedPlan->usedSubPlanNodeList;
 	ListCell *usedSubPlanCell = NULL;
 
+	List *subPlanList = distributedPlan->subPlanList;
+	ListCell *subPlanCell = NULL;
+
 	foreach(usedSubPlanCell, usedSubPlanList)
 	{
 		Const *resultIdConst = (Const *) lfirst(usedSubPlanCell);
@@ -202,8 +205,7 @@ RecordSubplanExecutionNodesForPlan(HTAB *intermediateResultsHash,
 			 distributedPlan->planId);
 	}
 
-	List *subPlanList = distributedPlan->subPlanList;
-	ListCell *subPlanCell = NULL;
+
 	foreach(subPlanCell, subPlanList)
 	{
 		DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);

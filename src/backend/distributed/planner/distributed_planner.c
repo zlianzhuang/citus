@@ -615,6 +615,13 @@ FindUsedSubPlanList(DistributedPlan *plan)
 		if (rangeTableEntry->rtekind == RTE_FUNCTION)
 		{
 			/* todo: improve here */
+			List *functionList = NIL;
+			RangeTblFunction *rangeTblfunction = NULL;
+			FuncExpr *funcExpr = NULL;
+
+			Const *resultIdConst = NULL;
+			Datum resultIdDatum;
+			char *resultId = NULL;
 
 			if (!ContainsReadIntermediateResultFunction(
 					(Node *) rangeTableEntry->functions))
@@ -622,14 +629,14 @@ FindUsedSubPlanList(DistributedPlan *plan)
 				continue;
 			}
 
-			List *functionList = rangeTableEntry->functions;
-			RangeTblFunction *rangeTblfunction = (RangeTblFunction *) linitial(
+			functionList = rangeTableEntry->functions;
+			rangeTblfunction = (RangeTblFunction *) linitial(
 				functionList);
-			FuncExpr *funcExpr = (FuncExpr *) rangeTblfunction->funcexpr;
+			funcExpr = (FuncExpr *) rangeTblfunction->funcexpr;
 
-			Const *resultIdConst = (Const *) linitial(funcExpr->args);
-			Datum resultIdDatum = resultIdConst->constvalue;
-			char *resultId = TextDatumGetCString(resultIdDatum);
+			resultIdConst = (Const *) linitial(funcExpr->args);
+			resultIdDatum = resultIdConst->constvalue;
+			resultId = TextDatumGetCString(resultIdDatum);
 			elog(DEBUG4, "resultId: %s", resultId);
 			plan->usedSubPlanNodeList = list_append_unique(plan->usedSubPlanNodeList,
 														   resultIdConst);
