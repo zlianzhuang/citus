@@ -916,6 +916,24 @@ FindWorkerNode(char *nodeName, int32 nodePort)
 }
 
 
+WorkerNode *
+GetWorkerNodeByNodeId(int nodeId)
+{
+	List *workerNodes = ReadWorkerNodes(false);
+	ListCell *lc = NULL;
+
+	foreach(lc, workerNodes)
+	{
+		WorkerNode *w = lfirst(lc);
+		if (w->nodeId == nodeId)
+		{
+			return w;
+		}
+	}
+	return NULL;
+}
+
+
 /*
  * FindWorkerNodeAnyCluster returns the workerNode no matter which cluster it is a part
  * of. FindWorkerNodes, like almost every other function, acts as if nodes in other

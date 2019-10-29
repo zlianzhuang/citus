@@ -518,8 +518,11 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 							  hasUnresolvedParams, plannerRestrictionContext);
 
 
-	FindUsedSubPlanList(distributedPlan);
-
+	/* TODO: move to a better place */
+	if (distributedPlan)
+	{
+		FindUsedSubPlanList(distributedPlan);
+	}
 
 	/*
 	 * If no plan was generated, prepare a generic error to be emitted.
@@ -594,10 +597,15 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 static List *
 FindUsedSubPlanList(DistributedPlan *plan)
 {
-	Query *jobQuery = plan->workerJob->jobQuery;
+	Query *jobQuery = NULL;
 	List *rangeTableList = NIL;
 	ListCell *rangeTableCell = NULL;
 
+	if (plan->workerJob == NULL)
+	{
+		return NIL;
+	}
+	jobQuery = plan->workerJob->jobQuery;
 	rangeTableList = ExtractRangeTableEntryList(jobQuery);
 
 	foreach(rangeTableCell, rangeTableList)
@@ -607,20 +615,23 @@ FindUsedSubPlanList(DistributedPlan *plan)
 		{
 			/* todo: improve here */
 
-			if (!ContainsReadIntermediateResultFunction((Node *) rangeTableEntry->functions))
+			if (!ContainsReadIntermediateResultFunction(
+					(Node *) rangeTableEntry->functions))
 			{
 				continue;
 			}
 
 			List *functionList = rangeTableEntry->functions;
-			RangeTblFunction *rangeTblfunction = (RangeTblFunction *) linitial(functionList);
-			FuncExpr *funcExpr = (FuncExpr *)rangeTblfunction->funcexpr;
+			RangeTblFunction *rangeTblfunction = (RangeTblFunction *) linitial(
+				functionList);
+			FuncExpr *funcExpr = (FuncExpr *) rangeTblfunction->funcexpr;
 
 			Const *resultIdConst = (Const *) linitial(funcExpr->args);
 			Datum resultIdDatum = resultIdConst->constvalue;
 			char *resultId = TextDatumGetCString(resultIdDatum);
 			elog(DEBUG4, "resultId: %s", resultId);
-			plan->usedSubPlanNodeList = list_append_unique(plan->usedSubPlanNodeList, resultIdConst);
+			plan->usedSubPlanNodeList = list_append_unique(plan->usedSubPlanNodeList,
+														   resultIdConst);
 		}
 	}
 
