@@ -66,7 +66,7 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 
 	/* If you're not a worker node, you should write local file to make sure
 	 * you have the data too */
-	bool writeLocalFile = GetLocalGroupId() == 0;
+	bool writeLocalFile = 0;
 
 	if (subPlanList == NIL)
 	{
@@ -152,6 +152,7 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 		{
 			/* Think more on this. Consider HAVING. */
 			nodeList = NIL;
+			writeLocalFile = true;
 			elog(DEBUG4, "%s is not sent to any node, write to local only",
 				 key.intermediate_result_id);
 		}
