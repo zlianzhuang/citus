@@ -237,6 +237,7 @@ ReadDistributedSubPlan(READFUNC_ARGS)
 
 	READ_UINT_FIELD(subPlanId);
 	READ_NODE_FIELD(plan);
+	READ_NODE_FIELD(workerNodeList);
 
 	READ_DONE();
 }

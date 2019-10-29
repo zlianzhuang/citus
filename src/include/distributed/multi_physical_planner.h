@@ -315,6 +315,8 @@ typedef struct DistributedSubPlan
 
 	uint32 subPlanId;
 	PlannedStmt *plan;
+
+	List *workerNodeList;
 } DistributedSubPlan;
 
 

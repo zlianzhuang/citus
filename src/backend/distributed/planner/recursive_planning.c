@@ -1195,6 +1195,15 @@ CreateDistributedSubPlan(uint32 subPlanId, Query *subPlanQuery)
 	subPlan->plan = planner(subPlanQuery, cursorOptions, NULL);
 	subPlan->subPlanId = subPlanId;
 
+	CustomScan *customScan = (CustomScan *) subPlan->plan->planTree;
+	if (IsA(customScan, CustomScan) &&
+		strcmp(customScan->methods->CustomName, "Citus Adaptive") == 0)
+	{
+		DistributedPlan *distributedPlan = GetDistributedPlan(customScan);
+		elog(DEBUG4, "plan found: %ld", distributedPlan->planId);
+		/* TODO: do we ever need this? */
+	}
+
 	return subPlan;
 }
 

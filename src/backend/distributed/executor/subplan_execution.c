@@ -19,6 +19,7 @@
 #include "distributed/worker_manager.h"
 #include "executor/executor.h"
 
+static List * NodeList(List *nodeIdList);
 
 int MaxIntermediateResult = 1048576; /* maximum size in KB the intermediate result can grow to */
 /* when this is true, we enforce intermediate result size limit in all executors */
@@ -35,7 +36,6 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	uint64 planId = distributedPlan->planId;
 	List *subPlanList = distributedPlan->subPlanList;
 	ListCell *subPlanCell = NULL;
-	List *nodeList = NIL;
 
 	/* If you're not a worker node, you should write local file to make sure
 	 * you have the data too */
@@ -56,8 +56,6 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	 */
 	BeginOrContinueCoordinatedTransaction();
 
-	nodeList = ActiveReadableNodeList();
-
 	foreach(subPlanCell, subPlanList)
 	{
 		DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);
@@ -66,6 +64,8 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 		DestReceiver *copyDest = NULL;
 		ParamListInfo params = NULL;
 		EState *estate = NULL;
+		List *nodeIdList = subPlan->workerNodeList;
+		List *nodeList = NodeList(nodeIdList);
 
 		char *resultId = GenerateResultId(planId, subPlanId);
 
@@ -80,4 +80,29 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 		SubPlanLevel--;
 		FreeExecutorState(estate);
 	}
+}
+
+
+static List *
+NodeList(List *nodeIdList)
+{
+	List *allWorkers = ReadWorkerNodes(false);
+
+	ListCell *lc = NULL;
+	List *l = NIL;
+	foreach(lc, nodeIdList)
+	{
+		int nodeId = lfirst_int(lc);
+
+		ListCell *lc2 = NULL;
+		foreach(lc2, allWorkers)
+		{
+			WorkerNode *w = lfirst(lc2);
+
+			if (w->nodeId == nodeId)
+			l = lappend(l , w);
+		}
+
+	}
+return l;
 }

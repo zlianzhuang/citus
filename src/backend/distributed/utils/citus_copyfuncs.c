@@ -130,6 +130,7 @@ CopyNodeDistributedSubPlan(COPYFUNC_ARGS)
 
 	COPY_SCALAR_FIELD(subPlanId);
 	COPY_NODE_FIELD(plan);
+	COPY_NODE_FIELD(workerNodeList);
 }
 
 

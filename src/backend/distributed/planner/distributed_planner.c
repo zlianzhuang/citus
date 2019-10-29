@@ -70,7 +70,8 @@ static DistributedPlan * CreateDistributedPlan(uint64 planId, Query *originalQue
 											   Query *query, ParamListInfo boundParams,
 											   bool hasUnresolvedParams,
 											   PlannerRestrictionContext *
-											   plannerRestrictionContext);
+											   plannerRestrictionContext,
+											   HTAB *intermediateResultJoins);
 static DeferredErrorMessage * DeferErrorIfPartitionTableNotSingleReplicated(Oid
 																			relationId);
 
@@ -488,7 +489,10 @@ IsModifyDistributedPlan(DistributedPlan *distributedPlan)
 {
 	return distributedPlan->modLevel > ROW_MODIFY_READONLY;
 }
-
+static void
+GetIntermediateResultJoinInfo(PlannerRestrictionContext *plannerRestrictionContext, HTAB *intermediateResultJoins);
+static void
+PruneBroadcastSubPlan(DistributedPlan *plan, DistributedSubPlan *subPlan, PlannerRestrictionContext *plannerRestrictionContext, HTAB *intermediateResultJoins);
 
 /*
  * CreateDistributedPlannedStmt encapsulates the logic needed to transform a particular
@@ -513,9 +517,11 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 	plannerRestrictionContext->joinRestrictionContext =
 		RemoveDuplicateJoinRestrictions(joinRestrictionContext);
 
+
 	distributedPlan =
 		CreateDistributedPlan(planId, originalQuery, query, boundParams,
-							  hasUnresolvedParams, plannerRestrictionContext);
+							  hasUnresolvedParams, plannerRestrictionContext,
+							  joinRestrictionContext->intermediateResultJoins);
 
 	/*
 	 * If no plan was generated, prepare a generic error to be emitted.
@@ -559,6 +565,28 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 	/* remember the plan's identifier for identifying subplans */
 	distributedPlan->planId = planId;
 
+	/*   */
+	GetIntermediateResultJoinInfo(plannerRestrictionContext, joinRestrictionContext->intermediateResultJoins);
+	elog(INFO, "For plan: %d we have the following restrict info", planId);
+	HASH_SEQ_STATUS status;
+	IntermediateResultHashEntry *joinEntry = NULL;
+
+	hash_seq_init(&status, joinRestrictionContext->intermediateResultJoins);
+	while ((joinEntry = (IntermediateResultHashEntry *) hash_seq_search(&status)) != 0)
+	{
+		ListCell *lc = NULL;
+elog(INFO,"start again?:%s",  joinEntry->key.intermediate_result_id);
+
+
+		foreach(lc, joinEntry->joinedRelationList)
+		{
+			Oid rel = lfirst_oid(lc);
+			elog(INFO,"relatiion: %s<-> %s", joinEntry->key.intermediate_result_id, get_rel_name(rel));
+		}
+
+	}
+
+
 	/* create final plan by combining local plan with distributed plan */
 	resultPlan = FinalizePlan(localPlan, distributedPlan);
 
@@ -582,6 +610,107 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 }
 
 
+static void
+GetIntermediateResultJoinInfo(PlannerRestrictionContext *plannerRestrictionContext, HTAB *intermediateResultJoins)
+{
+
+	List *joinRestrictionList =
+		plannerRestrictionContext->joinRestrictionContext->joinRestrictionList;
+	ListCell *joinRestrictionCell = NULL;
+
+	foreach(joinRestrictionCell, joinRestrictionList)
+	{
+		JoinRestriction *joinRestriction = (JoinRestriction *) lfirst(joinRestrictionCell);
+		PlannerInfo *plannerInfo = joinRestriction->plannerInfo;
+		RelOptInfo *innerrel = joinRestriction->innerrel;
+		RelOptInfo *outerrel = joinRestriction->outerrel;
+
+		RelOptInfo *intermediateResultFunction = NULL;
+		RelOptInfo *joinedRels = NULL;
+		IntermediateResultHashKey key;
+		IntermediateResultHashEntry *entry = NULL;
+
+		Relids relids;
+
+		if (innerrel->reloptkind == RELOPT_BASEREL && innerrel->rtekind == RTE_FUNCTION)
+		{
+			intermediateResultFunction = innerrel;
+			joinedRels = outerrel;
+		}
+		else if (outerrel->reloptkind == RELOPT_BASEREL && outerrel->rtekind == RTE_FUNCTION)
+		{
+			intermediateResultFunction = outerrel;
+			joinedRels = innerrel;
+		}
+
+
+		relids = bms_copy(intermediateResultFunction->relids);
+		int relationId = bms_first_member(relids);
+
+		if (relationId >= 0)
+		{
+			RangeTblEntry *rangeTableEntry = plannerInfo->simple_rte_array[relationId];
+			if (rangeTableEntry->rtekind == RTE_FUNCTION)
+			{
+				List *functionList = rangeTableEntry->functions;
+				RangeTblFunction *rangeTblfunction = (RangeTblFunction *) linitial(functionList);
+				FuncExpr *funcExpr = (FuncExpr *)rangeTblfunction->funcexpr;
+				Const *resultIdConst = (Const *) linitial(funcExpr->args);
+				Datum resultIdDatum = resultIdConst->constvalue;
+				char *resultId = TextDatumGetCString(resultIdDatum);
+				bool found = false;
+
+
+				strlcpy(key.intermediate_result_id , resultId, NAMEDATALEN);
+				entry = hash_search(intermediateResultJoins, &key, HASH_ENTER, &found);
+
+				if (!found)
+				{
+					elog(DEBUG1, "Entered function: %s ", resultId);
+					entry->joinedRelationList = NIL;
+				}
+			}
+		}
+
+		if (entry == NULL)
+		{
+			return;
+		}
+
+		Relids relids2 = bms_copy(joinedRels->relids);
+
+		while ((relationId = bms_first_member(relids2)) >= 0)
+		{
+			RangeTblEntry *rangeTableEntry = plannerInfo->simple_rte_array[relationId];
+			List *rangeTableRelationList = NIL;
+			ListCell *rangeTableRelationCell = NULL;
+			ExtractRangeTableEntryWalker((Node *) rangeTableEntry, &rangeTableRelationList);
+			foreach(rangeTableRelationCell, rangeTableRelationList)
+			{
+				RangeTblEntry *rte = (RangeTblEntry *) lfirst(rangeTableRelationCell);
+				if (rte->rtekind == RTE_RELATION)
+				{
+					elog(DEBUG1, "Joined relation name: %s", get_rel_name(rte->relid));
+
+					entry->joinedRelationList = list_append_unique_oid(entry->joinedRelationList, rte->relid);
+				}
+				else if (rte->rtekind == RTE_FUNCTION)
+				{
+					List *functionList = rangeTableEntry->functions;
+					RangeTblFunction *rangeTblfunction = (RangeTblFunction *) linitial(functionList);
+					FuncExpr *funcExpr = (FuncExpr *)rangeTblfunction->funcexpr;
+					Const *resultIdConst = (Const *) linitial(funcExpr->args);
+					Datum resultIdDatum = resultIdConst->constvalue;
+					char *resultId = TextDatumGetCString(resultIdDatum);
+					elog(DEBUG1, "Joined with function: %s", resultId);
+
+				}
+			}
+		}
+	}
+}
+
+
 /*
  * CreateDistributedPlan generates a distributed plan for a query.
  * It goes through 3 steps:
@@ -594,7 +723,8 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 static DistributedPlan *
 CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamListInfo
 					  boundParams, bool hasUnresolvedParams,
-					  PlannerRestrictionContext *plannerRestrictionContext)
+					  PlannerRestrictionContext *plannerRestrictionContext,
+					  HTAB *intermediateResultJoins)
 {
 	DistributedPlan *distributedPlan = NULL;
 	MultiTreeRoot *logicalPlan = NULL;
@@ -744,10 +874,22 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 		/* overwrite the old transformed query with the new transformed query */
 		memcpy(query, newQuery, sizeof(Query));
 
+		PlannerRestrictionContext *plannerRestrictionInfo = CurrentPlannerRestrictionContext();
+		GetIntermediateResultJoinInfo(plannerRestrictionInfo, intermediateResultJoins);
+
 		/* recurse into CreateDistributedPlan with subqueries/CTEs replaced */
 		distributedPlan = CreateDistributedPlan(planId, originalQuery, query, NULL, false,
-												plannerRestrictionContext);
+												plannerRestrictionContext, intermediateResultJoins);
 		distributedPlan->subPlanList = subPlanList;
+		distributedPlan->planId = planId;
+
+		ListCell *subPlanCell = NULL;
+		foreach(subPlanCell, subPlanList)
+		{
+			DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);
+
+			PruneBroadcastSubPlan(distributedPlan, subPlan, plannerRestrictionContext, intermediateResultJoins);
+		}
 
 		return distributedPlan;
 	}
@@ -790,8 +932,62 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 	/* distributed plan currently should always succeed or error out */
 	Assert(distributedPlan && distributedPlan->planningError == NULL);
 
+
 	return distributedPlan;
 }
+
+
+static void
+PruneBroadcastSubPlan(DistributedPlan *plan, DistributedSubPlan *subPlan, PlannerRestrictionContext *plannerRestrictionContext, HTAB *intermediateResultJoins)
+{
+	IntermediateResultHashKey key;
+	IntermediateResultHashEntry *entry = NULL;
+	bool found = false;
+	List *taskList = plan->workerJob->taskList;
+	ListCell *taskCell;
+	List *workerNodesToBroadCast = NIL;
+
+	strlcpy(key.intermediate_result_id , GenerateResultId(plan->planId, subPlan->subPlanId), NAMEDATALEN);
+	elog(INFO, "Planning for %s", key.intermediate_result_id);
+
+	entry = hash_search(intermediateResultJoins, &key, HASH_ENTER, &found);
+
+	if (found)
+	{
+		elog(INFO, "found: %s", nodeToString(taskList));
+		foreach(taskCell, taskList)
+		{
+			Task *task = (Task *) lfirst(taskCell);
+
+			List *relationShardList = task->relationShardList;
+			ListCell *relationShardCell = NULL;
+
+			foreach(relationShardCell, relationShardList)
+			{
+				RelationShard *relationShard = (RelationShard *) lfirst(relationShardCell);
+
+				if (list_member_oid(entry->joinedRelationList, relationShard->relationId))
+				{
+					List *shardPlacementList = FinalizedShardPlacementList(relationShard->shardId);
+					ListCell *shardPlacementCell = NULL;
+					foreach(shardPlacementCell, shardPlacementList)
+					{
+						ShardPlacement *sp = lfirst(shardPlacementCell);
+						WorkerNode *w = FindWorkerNode(sp->nodeName, sp->nodePort);
+
+					//	if (!list_member_int(workerNodesToBroadCast, w->nodeId))
+						{
+							workerNodesToBroadCast = list_append_unique_int(workerNodesToBroadCast, w->nodeId);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	subPlan->workerNodeList = workerNodesToBroadCast;
+}
+
 
 
 /*
@@ -1637,6 +1833,25 @@ CreateAndPushPlannerRestrictionContext(void)
 
 	plannerRestrictionContextList = lcons(plannerRestrictionContext,
 										  plannerRestrictionContextList);
+
+
+	uint32 hashFlags = 0;
+	HASHCTL info;
+
+
+	memset(&info, 0, sizeof(info));
+	info.keysize = sizeof(IntermediateResultHashKey);
+	info.entrysize = sizeof(IntermediateResultHashEntry);
+	info.hash = string_hash;
+	//info.match = ;
+	info.hcxt = CurrentMemoryContext;
+	hashFlags = (HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+
+	plannerRestrictionContext->joinRestrictionContext->intermediateResultJoins = hash_create("Intermediate results join hash",
+								 64, &info, hashFlags);
+
+
+
 
 	return plannerRestrictionContext;
 }

@@ -66,6 +66,8 @@ typedef struct RelationRestriction
 typedef struct JoinRestrictionContext
 {
 	List *joinRestrictionList;
+
+	HTAB *intermediateResultJoins;
 } JoinRestrictionContext;
 
 typedef struct JoinRestriction
@@ -77,11 +79,27 @@ typedef struct JoinRestriction
 	RelOptInfo *outerrel;
 } JoinRestriction;
 
+
+
+/* hash key */
+typedef struct IntermediateResultHashKey
+{
+	char intermediate_result_id[NAMEDATALEN];
+} IntermediateResultHashKey;
+
+/* hash entry */
+typedef struct IntermediateResultHashEntry
+{
+	IntermediateResultHashKey key;
+	List *joinedRelationList;
+} IntermediateResultHashEntry;
+
 typedef struct PlannerRestrictionContext
 {
 	RelationRestrictionContext *relationRestrictionContext;
 	JoinRestrictionContext *joinRestrictionContext;
 	MemoryContext memoryContext;
+
 } PlannerRestrictionContext;
 
 typedef struct RelationShard

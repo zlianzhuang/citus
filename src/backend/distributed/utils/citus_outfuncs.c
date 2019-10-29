@@ -209,6 +209,7 @@ OutDistributedSubPlan(OUTFUNC_ARGS)
 
 	WRITE_UINT_FIELD(subPlanId);
 	WRITE_NODE_FIELD(plan);
+	WRITE_NODE_FIELD(workerNodeList);
 }
 
 
