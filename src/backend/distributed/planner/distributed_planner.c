@@ -189,7 +189,6 @@ distributed_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 			result = CreateDistributedPlannedStmt(planId, result, originalQuery, parse,
 												  boundParams, plannerRestrictionContext);
-
 			setPartitionedTablesInherited = true;
 			AdjustPartitioningForDistributedPlanning(rangeTableList,
 													 setPartitionedTablesInherited);
@@ -516,6 +515,9 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 	distributedPlan =
 		CreateDistributedPlan(planId, originalQuery, query, boundParams,
 							  hasUnresolvedParams, plannerRestrictionContext);
+
+
+
 
 	/*
 	 * If no plan was generated, prepare a generic error to be emitted.

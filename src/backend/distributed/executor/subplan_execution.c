@@ -48,6 +48,29 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 		return;
 	}
 
+
+	/* calculate where each subPlan should go */
+	foreach(subPlanCell, subPlanList)
+	{
+		DistributedSubPlan *subPlan = (DistributedSubPlan *) lfirst(subPlanCell);
+		CustomScan *customScan = (CustomScan *) subPlan->plan->planTree;
+
+		/* TODO: improve this check */
+		if (IsA(customScan, CustomScan) &&
+				strcmp(customScan->methods->CustomName, "Citus Adaptive") == 0)
+		{
+			DistributedPlan *distributedPlan = GetDistributedPlan(customScan);
+			List *usedSubPlanList = distributedPlan->usedSubPlanNodeList;
+			ListCell *lc = NULL;
+
+			foreach(lc, usedSubPlanList)
+			{
+				char *usedPlan = (char *) lfirst(lc);
+				elog(INFO, "subplan %s  is used in %d%d", usedPlan, distributedPlan->planId, subPlan->subPlanId);
+			}
+		}
+	}
+
 	/*
 	 * Make sure that this transaction has a distributed transaction ID.
 	 *
