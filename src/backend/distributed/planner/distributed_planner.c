@@ -71,6 +71,7 @@ static DistributedPlan * CreateDistributedPlan(uint64 planId, Query *originalQue
 											   bool hasUnresolvedParams,
 											   PlannerRestrictionContext *
 											   plannerRestrictionContext);
+static List * FindUsedSubPlanList(DistributedPlan *plan);
 static DeferredErrorMessage * DeferErrorIfPartitionTableNotSingleReplicated(Oid
 																			relationId);
 
@@ -517,6 +518,7 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 							  hasUnresolvedParams, plannerRestrictionContext);
 
 
+	FindUsedSubPlanList(distributedPlan);
 
 
 	/*
@@ -581,6 +583,48 @@ CreateDistributedPlannedStmt(uint64 planId, PlannedStmt *localPlan, Query *origi
 	}
 
 	return resultPlan;
+}
+
+
+/*
+ * TODO: is it enough to check for jobQuery or jobQuery->rtable? We can
+ * optimize this further if we check indivual joins between tables and
+ * intermediate results.
+ */
+static List *
+FindUsedSubPlanList(DistributedPlan *plan)
+{
+	Query *jobQuery = plan->workerJob->jobQuery;
+	List *rangeTableList = NIL;
+	ListCell *rangeTableCell = NULL;
+
+	rangeTableList = ExtractRangeTableEntryList(jobQuery);
+
+	foreach(rangeTableCell, rangeTableList)
+	{
+		RangeTblEntry *rangeTableEntry = lfirst(rangeTableCell);
+		if (rangeTableEntry->rtekind == RTE_FUNCTION)
+		{
+			/* todo: improve here */
+
+			if (!ContainsReadIntermediateResultFunction((Node *) rangeTableEntry->functions))
+			{
+				continue;
+			}
+
+			List *functionList = rangeTableEntry->functions;
+			RangeTblFunction *rangeTblfunction = (RangeTblFunction *) linitial(functionList);
+			FuncExpr *funcExpr = (FuncExpr *)rangeTblfunction->funcexpr;
+
+			Const *resultIdConst = (Const *) linitial(funcExpr->args);
+			Datum resultIdDatum = resultIdConst->constvalue;
+			char *resultId = TextDatumGetCString(resultIdDatum);
+			elog(DEBUG4, "resultId: %s", resultId);
+			plan->usedSubPlanNodeList = list_append_unique(plan->usedSubPlanNodeList, resultIdConst);
+		}
+	}
+
+	return NIL;
 }
 
 
@@ -750,6 +794,9 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 		distributedPlan = CreateDistributedPlan(planId, originalQuery, query, NULL, false,
 												plannerRestrictionContext);
 		distributedPlan->subPlanList = subPlanList;
+
+		FindUsedSubPlanList(distributedPlan);
+
 
 		return distributedPlan;
 	}

@@ -18,12 +18,12 @@
 #include "distributed/transaction_management.h"
 #include "distributed/worker_manager.h"
 #include "executor/executor.h"
+#include "utils/builtins.h"
 
 
 int MaxIntermediateResult = 1048576; /* maximum size in KB the intermediate result can grow to */
 /* when this is true, we enforce intermediate result size limit in all executors */
 int SubPlanLevel = 0;
-
 
 /*
  * ExecuteSubPlans executes a list of subplans from a distributed plan
@@ -36,6 +36,9 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 	List *subPlanList = distributedPlan->subPlanList;
 	ListCell *subPlanCell = NULL;
 	List *nodeList = NIL;
+	List *topLevelUsedSubPlanNodes = distributedPlan->usedSubPlanNodeList;
+	ListCell *lc = NULL;
+
 
 	/* If you're not a worker node, you should write local file to make sure
 	 * you have the data too */
@@ -57,18 +60,31 @@ ExecuteSubPlans(DistributedPlan *distributedPlan)
 
 		/* TODO: improve this check */
 		if (IsA(customScan, CustomScan) &&
-				strcmp(customScan->methods->CustomName, "Citus Adaptive") == 0)
+			strcmp(customScan->methods->CustomName, "Citus Adaptive") == 0)
 		{
-			DistributedPlan *distributedPlan = GetDistributedPlan(customScan);
-			List *usedSubPlanList = distributedPlan->usedSubPlanNodeList;
+			DistributedPlan *innerDistributedPlan = GetDistributedPlan(customScan);
+			List *usedSubPlanList = innerDistributedPlan->usedSubPlanNodeList;
 			ListCell *lc = NULL;
 
 			foreach(lc, usedSubPlanList)
 			{
-				char *usedPlan = (char *) lfirst(lc);
-				elog(INFO, "subplan %s  is used in %d%d", usedPlan, distributedPlan->planId, subPlan->subPlanId);
+				Const *resultIdConst = (Const *) lfirst(lc);
+				Datum resultIdDatum = resultIdConst->constvalue;
+				char *resultId = TextDatumGetCString(resultIdDatum);
+
+				elog(DEBUG4, "subplan %s  is used in %lu", resultId, innerDistributedPlan->planId);
 			}
 		}
+	}
+
+	/* top level query also could have used sub plans */
+	foreach(lc, topLevelUsedSubPlanNodes)
+	{
+		Const *resultIdConst = (Const *) lfirst(lc);
+		Datum resultIdDatum = resultIdConst->constvalue;
+		char *resultId = TextDatumGetCString(resultIdDatum);
+
+		elog(DEBUG4, "subplan %s  is used in top query plan %ld  %d", resultId, distributedPlan->planId);
 	}
 
 	/*
