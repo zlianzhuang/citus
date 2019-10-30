@@ -211,7 +211,7 @@ citus_stype_serialize(PG_FUNCTION_ARGS)
 		memcpy(VARDATA(realbytes) + sizeof(Oid) + sizeof(bool),
 			   VARDATA(valbytes),
 			   valbyteslen_exhdr);
-		pfree(valbytes); /* TODO I get to free this right? */
+		pfree(valbytes);
 	}
 
 	PG_RETURN_BYTEA_P(realbytes);
@@ -489,8 +489,8 @@ worker_partial_agg_sfunc(PG_FUNCTION_ARGS)
 
 
 /*
- * (box) -> box.agg.stype
- * return box.agg.serialize(box.value)
+ * (box) -> text
+ * return box.agg.stype.output(box.value)
  */
 Datum
 worker_partial_agg_ffunc(PG_FUNCTION_ARGS)
@@ -499,10 +499,9 @@ worker_partial_agg_ffunc(PG_FUNCTION_ARGS)
 	FmgrInfo info;
 	StypeBox *box = (StypeBox *) PG_GETARG_POINTER(0);
 	HeapTuple aggtuple;
-	HeapTuple transtypetuple;
 	Form_pg_aggregate aggform;
-	Form_pg_type transtypeform;
-	Oid serial;
+	Oid typoutput = InvalidOid;
+	bool typIsVarlena = false;
 	Oid transtype;
 	Datum result;
 
@@ -512,27 +511,25 @@ worker_partial_agg_ffunc(PG_FUNCTION_ARGS)
 	}
 
 	aggtuple = get_aggform(box->agg, &aggform);
-	serial = aggform->aggserialfn;
+
+	if (aggform->aggcombinefn == InvalidOid)
+	{
+		elog(ERROR, "worker_partial_agg_ffunc expects an aggregate with COMBINEFUNC.");
+	}
+
+	if (aggform->aggtranstype == INTERNALOID)
+	{
+		elog(ERROR,
+			 "worker_partial_agg_ffunc does not support aggregates with INTERNAL transition state,");
+	}
+
 	transtype = aggform->aggtranstype;
 	ReleaseSysCache(aggtuple);
 
-	if (serial == InvalidOid)
-	{
-		/* TODO do we have to fallback to output/receive if not set? */
-		/* ie is it possible for send/recv to be unset? */
-		/* Answer: yes, but extremely rarely */
-		transtypetuple = get_typeform(transtype, &transtypeform);
-		serial = transtypeform->typsend;
-		ReleaseSysCache(transtypetuple);
-	}
+	getTypeOutputInfo(transtype, &typoutput, &typIsVarlena);
 
-	Assert(serial != InvalidOid);
+	fmgr_info(typoutput, &info);
 
-	fmgr_info(serial, &info);
-	if (info.fn_strict && box->value_null)
-	{
-		PG_RETURN_NULL();
-	}
 	InitFunctionCallInfoData(*inner_fcinfo, &info, 1, fcinfo->fncollation,
 							 fcinfo->context, fcinfo->resultinfo);
 	fcSetArgExt(inner_fcinfo, 0, box->value, box->value_null);
@@ -548,9 +545,9 @@ worker_partial_agg_ffunc(PG_FUNCTION_ARGS)
 
 
 /*
- * (box, agg, valbytes) -> box
+ * (box, agg, text) -> box
  * box->agg = agg
- * box->value = agg.combine(box->value, agg.deserialize(valbytes))
+ * box->value = agg.combine(box->value, agg.stype.input(text))
  * return box
  */
 Datum
@@ -581,13 +578,26 @@ coord_combine_agg_sfunc(PG_FUNCTION_ARGS)
 	}
 
 	aggtuple = get_aggform(box->agg, &aggform);
+
+	if (aggform->aggcombinefn == InvalidOid)
+	{
+		elog(ERROR, "worker_partial_agg_ffunc expects an aggregate with COMBINEFUNC.");
+	}
+
+	if (aggform->aggtranstype == INTERNALOID)
+	{
+		elog(ERROR,
+			 "worker_partial_agg_ffunc does not support aggregates with INTERNAL transition state,");
+	}
+
 	if (PG_ARGISNULL(0))
 	{
 		InitializeStypeBox(fcinfo, box, aggtuple, aggform->aggtranstype);
 	}
-	deserial = aggform->aggdeserialfn;
+
 	combine = aggform->aggcombinefn;
 	ReleaseSysCache(aggtuple);
+
 	if (PG_ARGISNULL(0))
 	{
 		get_typlenbyval(box->transtype,
@@ -596,58 +606,26 @@ coord_combine_agg_sfunc(PG_FUNCTION_ARGS)
 	}
 
 	value_null = PG_ARGISNULL(2);
-	if (deserial != InvalidOid)
+	transtypetuple = get_typeform(box->transtype, &transtypeform);
+	ioparam = getTypeIOParam(transtypetuple);
+	deserial = transtypeform->typinput;
+	ReleaseSysCache(transtypetuple);
+
+	fmgr_info(deserial, &info);
+	if (!value_null || !info.fn_strict)
 	{
-		fmgr_info(deserial, &info);
-		if (!value_null || !info.fn_strict)
-		{
-			InitFunctionCallInfoData(*inner_fcinfo, &info, 2, fcinfo->fncollation,
-									 fcinfo->context, fcinfo->resultinfo);
-			fcSetArgExt(inner_fcinfo, 0, value_null ? (Datum) 0 : PG_GETARG_DATUM(2),
-						value_null);
-			fcSetArgNull(inner_fcinfo, 1);
-			value = FunctionCallInvoke(inner_fcinfo);
-			value_null = inner_fcinfo->isnull;
-		}
-		else
-		{
-			value = (Datum) 0;
-		}
+		InitFunctionCallInfoData(*inner_fcinfo, &info, 3, fcinfo->fncollation,
+								 fcinfo->context, fcinfo->resultinfo);
+		fcSetArgExt(inner_fcinfo, 0, PG_GETARG_DATUM(2), value_null);
+		fcSetArg(inner_fcinfo, 1, ObjectIdGetDatum(ioparam));
+		fcSetArg(inner_fcinfo, 2, Int32GetDatum(-1)); /* typmod */
+
+		value = FunctionCallInvoke(inner_fcinfo);
+		value_null = inner_fcinfo->isnull;
 	}
 	else
 	{
-		transtypetuple = get_typeform(box->transtype, &transtypeform);
-		ioparam = getTypeIOParam(transtypetuple);
-		deserial = transtypeform->typreceive;
-		ReleaseSysCache(transtypetuple);
-
-		fmgr_info(deserial, &info);
-		if (!value_null || !info.fn_strict)
-		{
-			StringInfoData buf;
-
-			if (!value_null)
-			{
-				bytea *data = PG_GETARG_BYTEA_PP(2);
-				initStringInfo(&buf);
-				appendBinaryStringInfo(&buf, (char *) VARDATA_ANY(data),
-									   VARSIZE_ANY_EXHDR(data));
-			}
-
-			InitFunctionCallInfoData(*inner_fcinfo, &info, 3, fcinfo->fncollation,
-									 fcinfo->context, fcinfo->resultinfo);
-			fcSetArgExt(inner_fcinfo, 0, PointerGetDatum(value_null ? NULL : &buf),
-						value_null);
-			fcSetArg(inner_fcinfo, 1, ObjectIdGetDatum(ioparam));
-			fcSetArg(inner_fcinfo, 2, Int32GetDatum(-1)); /* typmod */
-
-			value = FunctionCallInvoke(inner_fcinfo);
-			value_null = inner_fcinfo->isnull;
-		}
-		else
-		{
-			value = (Datum) 0;
-		}
+		value = (Datum) 0;
 	}
 
 	fmgr_info(combine, &info);

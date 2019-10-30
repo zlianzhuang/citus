@@ -1870,12 +1870,13 @@ MasterAggregateExpression(Aggref *originalAggregate,
 			Oid coordCombineId = AggregateFunctionOidWithoutInput(
 				COORD_COMBINE_AGGREGATE_NAME);
 
-			Oid workerReturnType = BYTEAOID;
+			Oid workerReturnType = CSTRINGOID;
 			int32 workerReturnTypeMod = -1;
 			Oid workerCollationId = InvalidOid;
 
-			aggparam = makeConst(OIDOID, -1, InvalidOid, sizeof(Oid), ObjectIdGetDatum(
-									 originalAggregate->aggfnoid), false, true);
+			aggparam = makeConst(OIDOID, -1, InvalidOid, sizeof(Oid),
+								 ObjectIdGetDatum(originalAggregate->aggfnoid),
+								 false, true);
 			column = makeVar(masterTableId, walkerContext->columnId, workerReturnType,
 							 workerReturnTypeMod, workerCollationId, columnLevelsUp);
 
@@ -1891,8 +1892,7 @@ MasterAggregateExpression(Aggref *originalAggregate,
 			newMasterAggregate->aggkind = AGGKIND_NORMAL;
 			newMasterAggregate->aggfilter = originalAggregate->aggfilter;
 			newMasterAggregate->aggtranstype = INTERNALOID;
-			newMasterAggregate->aggargtypes = list_concat(list_make1_oid(OIDOID),
-														  list_make1_oid(BYTEAOID));
+			newMasterAggregate->aggargtypes = list_make2_oid(OIDOID, CSTRINGOID);
 			newMasterAggregate->aggsplit = AGGSPLIT_SIMPLE;
 
 			newMasterExpression = (Expr *) newMasterAggregate;
@@ -2965,13 +2965,13 @@ WorkerAggregateExpressionList(Aggref *originalAggregate,
 			/* worker_partial_agg(agg, ...args) */
 			newWorkerAggregate = makeNode(Aggref);
 			newWorkerAggregate->aggfnoid = workerPartialId;
-			newWorkerAggregate->aggtype = BYTEAOID;
+			newWorkerAggregate->aggtype = CSTRINGOID;
 			newWorkerAggregate->args = aggArguments;
 			newWorkerAggregate->aggkind = AGGKIND_NORMAL;
 			newWorkerAggregate->aggfilter = originalAggregate->aggfilter;
 			newWorkerAggregate->aggtranstype = INTERNALOID;
-			newWorkerAggregate->aggargtypes = list_concat(list_make1_oid(OIDOID),
-														  originalAggregate->aggargtypes);
+			newWorkerAggregate->aggargtypes = lcons_oid(OIDOID,
+														originalAggregate->aggargtypes);
 			newWorkerAggregate->aggsplit = AGGSPLIT_SIMPLE;
 
 			workerAggregateList = list_make1(newWorkerAggregate);
@@ -3036,13 +3036,13 @@ GetAggregateType(Oid aggFunctionId)
 		}
 	}
 
-	if (AggregateEnabledCustom(aggFunctionId))
-	{
-		return AGGREGATE_CUSTOM;
-	}
-
 	if (!found)
 	{
+		if (AggregateEnabledCustom(aggFunctionId))
+		{
+			return AGGREGATE_CUSTOM;
+		}
+
 		ereport(ERROR, (errmsg("unsupported aggregate function %s", aggregateProcName)));
 	}
 

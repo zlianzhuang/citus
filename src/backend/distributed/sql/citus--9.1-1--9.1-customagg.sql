@@ -1,4 +1,4 @@
-SET search_path = 'pg_catalog';
+SET search_path = 'citus';
 
 CREATE FUNCTION citus_stype_serialize(internal)
 RETURNS bytea
@@ -21,16 +21,16 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C PARALLEL SAFE;
 
 CREATE FUNCTION worker_partial_agg_ffunc(internal)
-RETURNS bytea
+RETURNS cstring
 AS 'MODULE_PATHNAME'
 LANGUAGE C PARALLEL SAFE;
 
-CREATE FUNCTION coord_combine_agg_sfunc(internal, oid, bytea, anyelement)
+CREATE FUNCTION coord_combine_agg_sfunc(internal, oid, cstring, anyelement)
 RETURNS internal
 AS 'MODULE_PATHNAME'
 LANGUAGE C PARALLEL SAFE;
 
-CREATE FUNCTION coord_combine_agg_ffunc(internal, oid, bytea, anyelement)
+CREATE FUNCTION coord_combine_agg_ffunc(internal, oid, cstring, anyelement)
 RETURNS anyelement
 AS 'MODULE_PATHNAME'
 LANGUAGE C PARALLEL SAFE;
@@ -51,7 +51,7 @@ CREATE AGGREGATE worker_partial_agg(oid, anyelement) (
 -- select coord_combine_agg(agg, col)
 -- equivalent to
 -- select agg_ffunc(agg_combine(col))
-CREATE AGGREGATE coord_combine_agg(oid, bytea, anyelement) (
+CREATE AGGREGATE coord_combine_agg(oid, cstring, anyelement) (
 	STYPE = internal,
 	SFUNC = coord_combine_agg_sfunc,
 	FINALFUNC = coord_combine_agg_ffunc,
