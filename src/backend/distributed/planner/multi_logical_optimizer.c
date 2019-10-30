@@ -3022,11 +3022,6 @@ GetAggregateType(Oid aggFunctionId)
 							   aggFunctionId)));
 	}
 
-	if (AggregateEnabledCustom(aggFunctionId))
-	{
-		return AGGREGATE_CUSTOM;
-	}
-
 	aggregateCount = lengthof(AggregateNames);
 
 	Assert(AGGREGATE_INVALID_FIRST == 0);
@@ -3039,6 +3034,11 @@ GetAggregateType(Oid aggFunctionId)
 			found = true;
 			break;
 		}
+	}
+
+	if (AggregateEnabledCustom(aggFunctionId))
+	{
+		return AGGREGATE_CUSTOM;
 	}
 
 	if (!found)
@@ -3068,10 +3068,24 @@ AggregateArgumentType(Aggref *aggregate)
 static bool
 AggregateEnabledCustom(Oid aggregateOid)
 {
-	DistObjectCacheEntry *cacheEntry = LookupDistObjectCacheEntry(AggregateRelationId,
-																  aggregateOid, 0);
+	HeapTuple aggTuple;
+	Form_pg_aggregate aggform;
+	bool supportsSafeCombine;
 
-	return cacheEntry != NULL;
+	aggTuple = SearchSysCache1(AGGFNOID, aggregateOid);
+	if (!HeapTupleIsValid(aggTuple))
+	{
+		elog(ERROR, "citus cache lookup failed.");
+	}
+
+	aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
+
+	supportsSafeCombine = aggform->aggcombinefn != InvalidOid &&
+						  aggform->aggtranstype != INTERNALOID;
+
+	ReleaseSysCache(aggTuple);
+
+	return supportsSafeCombine;
 }
 
 
