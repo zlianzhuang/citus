@@ -22,6 +22,7 @@ PG_FUNCTION_INFO_V1(coord_combine_agg_ffunc);
 
 /* TODO nodeAgg seems to decide to use serial/deserial based on stype == internal */
 /*      Preferably we should match that logic, instead of checking serial/deserial oids */
+/* TODO take on nodeAgg's acl checks */
 
 typedef struct StypeBox
 {
@@ -40,6 +41,10 @@ static HeapTuple get_typeform(Oid oid, Form_pg_type *form);
 static void * pallocInAggContext(FunctionCallInfo fcinfo, size_t size);
 static void InitializeStypeBox(FunctionCallInfo fcinfo, StypeBox *box, HeapTuple aggTuple,
 							   Oid transtype);
+static void agg_sfunc_handle_transition(StypeBox *box, FunctionCallInfo fcinfo,
+										FunctionCallInfo inner_fcinfo);
+static void agg_sfunc_handle_strict_uninit(StypeBox *box, FunctionCallInfo fcinfo, Datum
+										   value);
 
 static HeapTuple
 get_aggform(Oid oid, Form_pg_aggregate *form)
@@ -136,6 +141,83 @@ InitializeStypeBox(FunctionCallInfo fcinfo, StypeBox *box, HeapTuple aggTuple, O
 
 		MemoryContextSwitchTo(oldContext);
 	}
+}
+
+
+/*
+ * agg_sfunc_handle_transition replicates logic used in nodeAgg for handling
+ * result of transition function.
+ */
+static void
+agg_sfunc_handle_transition(StypeBox *box, FunctionCallInfo fcinfo, FunctionCallInfo
+							inner_fcinfo)
+{
+	Datum newVal = FunctionCallInvoke(inner_fcinfo);
+	bool newValIsNull = inner_fcinfo->isnull;
+
+	if (!box->transtypeByVal &&
+		DatumGetPointer(newVal) != DatumGetPointer(box->value))
+	{
+		if (!newValIsNull)
+		{
+			MemoryContext aggregateContext;
+			MemoryContext oldContext;
+			if (!AggCheckCallContext(fcinfo, &aggregateContext))
+			{
+				elog(ERROR, "worker_partial_agg_sfunc called from non aggregate context");
+			}
+
+			oldContext = MemoryContextSwitchTo(aggregateContext);
+			if (!(DatumIsReadWriteExpandedObject(box->value,
+												 false, box->transtypeLen) &&
+				  MemoryContextGetParent(DatumGetEOHP(newVal)->eoh_context) ==
+				  CurrentMemoryContext))
+			{
+				newVal = datumCopy(newVal, box->transtypeByVal, box->transtypeLen);
+			}
+			MemoryContextSwitchTo(oldContext);
+		}
+
+		if (!box->value_null)
+		{
+			if (DatumIsReadWriteExpandedObject(box->value,
+											   false, box->transtypeLen))
+			{
+				DeleteExpandedObject(box->value);
+			}
+			else
+			{
+				pfree(DatumGetPointer(box->value));
+			}
+		}
+	}
+
+	box->value = newVal;
+	box->value_null = newValIsNull;
+}
+
+
+/*
+ * agg_sfunc_handle_strict_uninit handles initialization of state for when
+ * transition function is strict & state has not yet been initialized.
+ */
+static void
+agg_sfunc_handle_strict_uninit(StypeBox *box, FunctionCallInfo fcinfo, Datum value)
+{
+	MemoryContext aggregateContext;
+	MemoryContext oldContext;
+
+	if (!AggCheckCallContext(fcinfo, &aggregateContext))
+	{
+		elog(ERROR, "worker_partial_agg_sfunc called from non aggregate context");
+	}
+
+	oldContext = MemoryContextSwitchTo(aggregateContext);
+	box->value = datumCopy(value, box->transtypeByVal, box->transtypeLen);
+	MemoryContextSwitchTo(oldContext);
+
+	box->value_null = false;
+	box->value_init = true;
 }
 
 
@@ -345,17 +427,16 @@ citus_stype_combine(PG_FUNCTION_ARGS)
 
 	if (info.fn_strict)
 	{
-		if (box1->value_null)
-		{
-			if (box2->value_null)
-			{
-				PG_RETURN_NULL();
-			}
-			PG_RETURN_DATUM(box2->value);
-		}
 		if (box2->value_null)
 		{
-			PG_RETURN_DATUM(box1->value);
+			PG_RETURN_POINTER(box1);
+		}
+
+		if (box1->value_null)
+		{
+			box1->value = box2->value;
+			box1->value_null = box2->value_null;
+			PG_RETURN_POINTER(box1);
 		}
 	}
 
@@ -364,9 +445,7 @@ citus_stype_combine(PG_FUNCTION_ARGS)
 	fcSetArgExt(inner_fcinfo, 0, box1->value, box1->value_null);
 	fcSetArgExt(inner_fcinfo, 1, box2->value, box2->value_null);
 
-	/* TODO Deal with memory management juggling (see executor/nodeAgg) */
-	box1->value = FunctionCallInvoke(inner_fcinfo);
-	box1->value_null = inner_fcinfo->isnull;
+	agg_sfunc_handle_transition(box1, fcinfo, inner_fcinfo);
 
 	PG_RETURN_POINTER(box1);
 }
@@ -389,7 +468,6 @@ worker_partial_agg_sfunc(PG_FUNCTION_ARGS)
 	FmgrInfo info;
 	int i;
 	bool is_initial_call = PG_ARGISNULL(0);
-	Datum newVal;
 
 	if (is_initial_call)
 	{
@@ -417,8 +495,6 @@ worker_partial_agg_sfunc(PG_FUNCTION_ARGS)
 	}
 
 	fmgr_info(aggsfunc, &info);
-	InitFunctionCallInfoData(*inner_fcinfo, &info, fcinfo->nargs - 1, fcinfo->fncollation,
-							 fcinfo->context, fcinfo->resultinfo);
 	if (info.fn_strict)
 	{
 		for (i = 2; i < PG_NARGS(); i++)
@@ -428,61 +504,29 @@ worker_partial_agg_sfunc(PG_FUNCTION_ARGS)
 				PG_RETURN_POINTER(box);
 			}
 		}
+
 		if (!box->value_init)
 		{
-			MemoryContext aggregateContext;
-			MemoryContext oldContext;
-			if (!AggCheckCallContext(fcinfo, &aggregateContext))
-			{
-				elog(ERROR,
-					 "worker_partial_agg_sfunc called from non aggregate context");
-			}
-			oldContext = MemoryContextSwitchTo(aggregateContext);
-			box->value = datumCopy(PG_GETARG_DATUM(2), box->transtypeByVal,
-								   box->transtypeLen);
-			MemoryContextSwitchTo(oldContext);
-			box->value_null = false;
-			box->value_init = true;
+			agg_sfunc_handle_strict_uninit(box, fcinfo, PG_GETARG_DATUM(2));
 			PG_RETURN_POINTER(box);
 		}
+
 		if (box->value_null)
 		{
 			PG_RETURN_POINTER(box);
 		}
 	}
 
-	/* TODO Deal with memory management juggling (see executor/nodeAgg) */
+	InitFunctionCallInfoData(*inner_fcinfo, &info, fcinfo->nargs - 1, fcinfo->fncollation,
+							 fcinfo->context, fcinfo->resultinfo);
 	fcSetArgExt(inner_fcinfo, 0, box->value, box->value_null);
 	for (i = 1; i < inner_fcinfo->nargs; i++)
 	{
-		fcSetArgExt(inner_fcinfo, i, fcGetArgValue(fcinfo, i + 1), fcGetArgNull(fcinfo,
-																				i + 1));
-	}
-	newVal = FunctionCallInvoke(inner_fcinfo);
-	box->value_null = inner_fcinfo->isnull;
-
-	if (!box->value_null)
-	{
-		MemoryContext aggregateContext;
-		MemoryContext oldContext;
-		if (!AggCheckCallContext(fcinfo, &aggregateContext))
-		{
-			elog(ERROR, "worker_partial_agg_sfunc called from non aggregate context");
-		}
-
-		oldContext = MemoryContextSwitchTo(aggregateContext);
-		if (!(DatumIsReadWriteExpandedObject(box->value,
-											 false,
-											 box->transtypeLen) &&
-			  MemoryContextGetParent(DatumGetEOHP(newVal)->eoh_context) ==
-			  CurrentMemoryContext))
-		{
-			newVal = datumCopy(newVal, box->transtypeByVal, box->transtypeLen);
-		}
-		MemoryContextSwitchTo(oldContext);
+		fcSetArgExt(inner_fcinfo, i, fcGetArgValue(fcinfo, i + 1),
+					fcGetArgNull(fcinfo, i + 1));
 	}
 
-	box->value = newVal;
+	agg_sfunc_handle_transition(box, fcinfo, inner_fcinfo);
 
 	PG_RETURN_POINTER(box);
 }
@@ -497,7 +541,7 @@ worker_partial_agg_ffunc(PG_FUNCTION_ARGS)
 {
 	LOCAL_FCINFO(inner_fcinfo, 1);
 	FmgrInfo info;
-	StypeBox *box = (StypeBox *) PG_GETARG_POINTER(0);
+	StypeBox *box = (StypeBox *) (PG_ARGISNULL(0) ? NULL : PG_GETARG_POINTER(0));
 	HeapTuple aggtuple;
 	Form_pg_aggregate aggform;
 	Oid typoutput = InvalidOid;
@@ -505,7 +549,7 @@ worker_partial_agg_ffunc(PG_FUNCTION_ARGS)
 	Oid transtype;
 	Datum result;
 
-	if (box == NULL)
+	if (box == NULL || box->value_null)
 	{
 		PG_RETURN_NULL();
 	}
@@ -546,8 +590,8 @@ worker_partial_agg_ffunc(PG_FUNCTION_ARGS)
 
 /*
  * (box, agg, text) -> box
- * box->agg = agg
- * box->value = agg.combine(box->value, agg.stype.input(text))
+ * box.agg = agg
+ * box.value = agg.combine(box.value, agg.stype.input(text))
  * return box
  */
 Datum
@@ -581,21 +625,22 @@ coord_combine_agg_sfunc(PG_FUNCTION_ARGS)
 
 	if (aggform->aggcombinefn == InvalidOid)
 	{
-		elog(ERROR, "worker_partial_agg_ffunc expects an aggregate with COMBINEFUNC.");
+		elog(ERROR, "worker_partial_agg_sfunc expects an aggregate with COMBINEFUNC.");
 	}
 
 	if (aggform->aggtranstype == INTERNALOID)
 	{
 		elog(ERROR,
-			 "worker_partial_agg_ffunc does not support aggregates with INTERNAL transition state,");
+			 "worker_partial_agg_sfunc does not support aggregates with INTERNAL transition state,");
 	}
+
+	combine = aggform->aggcombinefn;
 
 	if (PG_ARGISNULL(0))
 	{
 		InitializeStypeBox(fcinfo, box, aggtuple, aggform->aggtranstype);
 	}
 
-	combine = aggform->aggcombinefn;
 	ReleaseSysCache(aggtuple);
 
 	if (PG_ARGISNULL(0))
@@ -612,7 +657,11 @@ coord_combine_agg_sfunc(PG_FUNCTION_ARGS)
 	ReleaseSysCache(transtypetuple);
 
 	fmgr_info(deserial, &info);
-	if (!value_null || !info.fn_strict)
+	if (value_null && info.fn_strict)
+	{
+		value = (Datum) 0;
+	}
+	else
 	{
 		InitFunctionCallInfoData(*inner_fcinfo, &info, 3, fcinfo->fncollation,
 								 fcinfo->context, fcinfo->resultinfo);
@@ -623,26 +672,23 @@ coord_combine_agg_sfunc(PG_FUNCTION_ARGS)
 		value = FunctionCallInvoke(inner_fcinfo);
 		value_null = inner_fcinfo->isnull;
 	}
-	else
-	{
-		value = (Datum) 0;
-	}
 
 	fmgr_info(combine, &info);
 
 	if (info.fn_strict)
 	{
-		if (box->value_null)
+		if (value_null)
 		{
-			if (value_null)
-			{
-				PG_RETURN_NULL();
-			}
-			box->value = value;
-			box->value_null = false;
 			PG_RETURN_POINTER(box);
 		}
-		if (value_null)
+
+		if (!box->value_init)
+		{
+			agg_sfunc_handle_strict_uninit(box, fcinfo, value);
+			PG_RETURN_POINTER(box);
+		}
+
+		if (box->value_null)
 		{
 			PG_RETURN_POINTER(box);
 		}
@@ -652,8 +698,8 @@ coord_combine_agg_sfunc(PG_FUNCTION_ARGS)
 							 fcinfo->context, fcinfo->resultinfo);
 	fcSetArgExt(inner_fcinfo, 0, box->value, box->value_null);
 	fcSetArgExt(inner_fcinfo, 1, value, value_null);
-	box->value = FunctionCallInvoke(inner_fcinfo);
-	box->value_null = inner_fcinfo->isnull;
+
+	agg_sfunc_handle_transition(box, fcinfo, inner_fcinfo);
 
 	PG_RETURN_POINTER(box);
 }
@@ -667,7 +713,7 @@ Datum
 coord_combine_agg_ffunc(PG_FUNCTION_ARGS)
 {
 	Datum ret;
-	StypeBox *box = (StypeBox *) PG_GETARG_POINTER(0);
+	StypeBox *box = (StypeBox *) (PG_ARGISNULL(0) ? NULL : PG_GETARG_POINTER(0));
 	LOCAL_FCINFO(inner_fcinfo, FUNC_MAX_ARGS);
 	FmgrInfo info;
 	int inner_nargs;
@@ -682,6 +728,10 @@ coord_combine_agg_ffunc(PG_FUNCTION_ARGS)
 
 	if (box == NULL)
 	{
+		/*
+		 * Ideally we'd return initval,
+		 * but we don't know which aggregate we're handling here
+		 */
 		PG_RETURN_NULL();
 	}
 
@@ -708,7 +758,6 @@ coord_combine_agg_ffunc(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	}
 
-	fmgr_info(ffunc, &info);
 	if (fextra)
 	{
 		inner_nargs = fcinfo->nargs;
@@ -725,6 +774,7 @@ coord_combine_agg_ffunc(PG_FUNCTION_ARGS)
 	{
 		fcSetArgNull(inner_fcinfo, i);
 	}
+
 	ret = FunctionCallInvoke(inner_fcinfo);
 	fcinfo->isnull = inner_fcinfo->isnull;
 	return ret;
