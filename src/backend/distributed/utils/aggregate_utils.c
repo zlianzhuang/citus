@@ -5,11 +5,13 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "distributed/version_compat.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "fmgr.h"
+#include "miscadmin.h"
 #include "pg_config_manual.h"
 
 PG_FUNCTION_INFO_V1(citus_stype_serialize);
@@ -22,7 +24,6 @@ PG_FUNCTION_INFO_V1(coord_combine_agg_ffunc);
 
 /* TODO nodeAgg seems to decide to use serial/deserial based on stype == internal */
 /*      Preferably we should match that logic, instead of checking serial/deserial oids */
-/* TODO take on nodeAgg's acl checks */
 
 typedef struct StypeBox
 {
@@ -39,6 +40,7 @@ static HeapTuple get_aggform(Oid oid, Form_pg_aggregate *form);
 static HeapTuple get_procform(Oid oid, Form_pg_proc *form);
 static HeapTuple get_typeform(Oid oid, Form_pg_type *form);
 static void * pallocInAggContext(FunctionCallInfo fcinfo, size_t size);
+static void agg_aclcheck(ObjectType objectType, Oid userOid, Oid funcOid);
 static void InitializeStypeBox(FunctionCallInfo fcinfo, StypeBox *box, HeapTuple aggTuple,
 							   Oid transtype);
 static void agg_sfunc_handle_transition(StypeBox *box, FunctionCallInfo fcinfo,
@@ -104,15 +106,45 @@ pallocInAggContext(FunctionCallInfo fcinfo, size_t size)
 
 
 /*
+ * agg_aclcheck verifies that the given user has ACL_EXECUTE to the given proc
+ */
+static void
+agg_aclcheck(ObjectType objectType, Oid userOid, Oid funcOid)
+{
+	AclResult aclresult;
+	if (funcOid != InvalidOid)
+	{
+		aclresult = pg_proc_aclcheck(funcOid, userOid, ACL_EXECUTE);
+		if (aclresult != ACLCHECK_OK)
+		{
+			aclcheck_error(aclresult, objectType, get_func_name(funcOid));
+		}
+	}
+}
+
+
+/*
  * See GetAggInitVal from pg's nodeAgg.c
  */
 static void
 InitializeStypeBox(FunctionCallInfo fcinfo, StypeBox *box, HeapTuple aggTuple, Oid
 				   transtype)
 {
-	Datum textInitVal = SysCacheGetAttr(AGGFNOID, aggTuple,
-										Anum_pg_aggregate_agginitval,
-										&box->value_null);
+	Datum textInitVal;
+	Form_pg_aggregate aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
+	Oid userId = GetUserId();
+
+	/* First we make ACL_EXECUTE checks as would be done in nodeAgg.c */
+	agg_aclcheck(OBJECT_AGGREGATE, userId, aggform->aggfnoid);
+	agg_aclcheck(OBJECT_FUNCTION, userId, aggform->aggfinalfn);
+	agg_aclcheck(OBJECT_FUNCTION, userId, aggform->aggtransfn);
+	agg_aclcheck(OBJECT_FUNCTION, userId, aggform->aggdeserialfn);
+	agg_aclcheck(OBJECT_FUNCTION, userId, aggform->aggserialfn);
+	agg_aclcheck(OBJECT_FUNCTION, userId, aggform->aggcombinefn);
+
+	textInitVal = SysCacheGetAttr(AGGFNOID, aggTuple,
+								  Anum_pg_aggregate_agginitval,
+								  &box->value_null);
 	box->transtype = transtype;
 	box->value_init = !box->value_null;
 	if (box->value_null)
@@ -302,9 +334,9 @@ citus_stype_serialize(PG_FUNCTION_ARGS)
 
 /*
  * (bytea, internal) -> box
- * box->agg = readagg(bytea)
- * box->value_null = readbool(bytea)
- * if (!box->value_null) box->value = agg.deserial(readrest(bytea))
+ * box.agg = readagg(bytea)
+ * box.value_null = readbool(bytea)
+ * if (!box.value_null) box.value = agg.deserial(readrest(bytea))
  * return box
  */
 Datum
