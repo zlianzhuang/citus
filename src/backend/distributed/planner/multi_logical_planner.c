@@ -133,6 +133,8 @@ MultiLogicalPlanCreate(Query *originalQuery, Query *queryTree,
 {
 	MultiNode *multiQueryNode = NULL;
 	MultiTreeRoot *rootNode = NULL;
+	MemoryContext savedContext = CurrentMemoryContext;
+
 
 	if (ShouldUseSubqueryPushDown(originalQuery, queryTree))
 	{
@@ -683,7 +685,14 @@ MultiNodeTree(Query *queryTree)
 		subqueryTree = subqueryRangeTableEntry->subquery;
 
 		/* ensure if subquery satisfies preconditions */
-		Assert(DeferErrorIfUnsupportedSubqueryRepartition(subqueryTree) == NULL);
+		if (DeferErrorIfUnsupportedSubqueryRepartition(subqueryTree) != NULL)
+		{
+			RaiseDeferredErrorInternal(
+				DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
+							  "complex joins are only supported when all distributed tables are "
+							  "joined on their distribution columns with equal operator",
+							  NULL, NULL), ERROR);
+		}
 
 		subqueryNode = CitusMakeNode(MultiTable);
 		subqueryNode->relationId = SUBQUERY_RELATION_ID;
@@ -969,7 +978,7 @@ HasUnsupportedJoinWalker(Node *node, void *context)
 		JoinExpr *joinExpr = (JoinExpr *) node;
 		JoinType joinType = joinExpr->jointype;
 		bool outerJoin = IS_OUTER_JOIN(joinType);
-		if (!outerJoin && joinType != JOIN_INNER)
+		if (!outerJoin && joinType != JOIN_INNER && joinType != JOIN_SEMI)
 		{
 			hasUnsupportedJoin = true;
 		}
@@ -1335,7 +1344,7 @@ ExtractFromExpressionWalker(Node *node, QualifierWalkerContext *walkerContext)
 		}
 
 		/* return outer join clauses in a separate list */
-		if (joinType == JOIN_INNER)
+		if (joinType == JOIN_INNER || joinType == JOIN_SEMI)
 		{
 			walkerContext->baseQualifierList =
 				list_concat(walkerContext->baseQualifierList, joinQualifierList);

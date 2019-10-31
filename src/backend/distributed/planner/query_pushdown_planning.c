@@ -100,14 +100,8 @@ static List * CreateSubqueryTargetEntryList(List *columnList);
 static bool RelationInfoContainsOnlyRecurringTuples(PlannerInfo *plannerInfo,
 													RelOptInfo *relationInfo);
 
-
-/*
- * ShouldUseSubqueryPushDown determines whether it's desirable to use
- * subquery pushdown to plan the query based on the original and
- * rewritten query.
- */
-bool
-ShouldUseSubqueryPushDown(Query *originalQuery, Query *rewrittenQuery)
+static bool
+NotEasyWithoutPushdown(Query *originalQuery, Query *rewrittenQuery)
 {
 	List *qualifierList = NIL;
 	StringInfo errorMessage = NULL;
@@ -118,17 +112,6 @@ ShouldUseSubqueryPushDown(Query *originalQuery, Query *rewrittenQuery)
 	 * can plan corresponding distributed plan.
 	 */
 	if (JoinTreeContainsSubquery(rewrittenQuery))
-	{
-		return true;
-	}
-
-	/*
-	 * We also check the existence of subqueries in WHERE clause. Note that
-	 * this check needs to be done on the original query given that
-	 * standard_planner() may replace the sublinks with anti/semi joins and
-	 * MultiPlanTree() cannot plan such queries.
-	 */
-	if (WhereOrHavingClauseContainsSubquery(originalQuery))
 	{
 		return true;
 	}
@@ -160,7 +143,7 @@ ShouldUseSubqueryPushDown(Query *originalQuery, Query *rewrittenQuery)
 	if (FindNodeCheck((Node *) rewrittenQuery->jointree, IsOuterJoinExpr))
 	{
 		/* Assert what _should_ be only situation this occurs in. */
-		Assert(JoinTreeContainsSubquery(originalQuery));
+		/* Assert(JoinTreeContainsSubquery(originalQuery)); */
 		return true;
 	}
 
@@ -182,6 +165,52 @@ ShouldUseSubqueryPushDown(Query *originalQuery, Query *rewrittenQuery)
 	}
 
 	return false;
+}
+
+
+/*
+ * ShouldUseSubqueryPushDown determines whether it's desirable to use
+ * subquery pushdown to plan the query based on the original and
+ * rewritten query.
+ */
+bool
+ShouldUseSubqueryPushDown(Query *originalQuery, Query *rewrittenQuery)
+{
+	/*
+	 * We also check the existence of subqueries in WHERE clause. Note that
+	 * this check needs to be done on the original query given that
+	 * standard_planner() may replace the sublinks with anti/semi joins and
+	 * MultiPlanTree() cannot plan such queries.
+	 */
+	if (WhereOrHavingClauseContainsSubquery(originalQuery))
+	{
+		return true;
+	}
+
+	return NotEasyWithoutPushdown(originalQuery, rewrittenQuery);
+}
+
+
+/*
+ * ShouldNotTryMultiPlan useSubqueryPushDown determines whether it's desirable to use
+ * subquery pushdown to plan the query based on the original and
+ * rewritten query.
+ */
+static bool
+ShouldTryMultiPlan(Query *originalQuery, Query *rewrittenQuery)
+{
+	/*
+	 * We also check the existence of subqueries in WHERE clause. Note that
+	 * this check needs to be done on the original query given that
+	 * standard_planner() may replace the sublinks with anti/semi joins and
+	 * MultiPlanTree() cannot plan such queries.
+	 */
+	if (WhereOrHavingClauseContainsSubquery(rewrittenQuery))
+	{
+		return false;
+	}
+
+	return !NotEasyWithoutPushdown(originalQuery, rewrittenQuery);
 }
 
 
@@ -515,6 +544,10 @@ SubqueryMultiNodeTree(Query *originalQuery, Query *queryTree,
 	if (!subqueryPushdownError)
 	{
 		multiQueryNode = SubqueryPushdownMultiNodeTree(originalQuery);
+	}
+	else if (ShouldTryMultiPlan(originalQuery, queryTree))
+	{
+		multiQueryNode = MultiNodeTree(queryTree);
 	}
 	else if (subqueryPushdownError)
 	{
