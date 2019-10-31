@@ -15,7 +15,6 @@
 #include "access/htup_details.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_constraint.h"
-#include "catalog/pg_constraint_fn.h"
 #include "catalog/pg_type.h"
 #include "distributed/colocation_utils.h"
 #include "distributed/foreign_constraint.h"
@@ -139,7 +138,8 @@ ErrorIfUnsupportedForeignConstraint(Relation relation, char distributionMethod,
 	pgConstraint = heap_open(ConstraintRelationId, AccessShareLock);
 	ScanKeyInit(&scanKey[0], Anum_pg_constraint_conrelid, BTEqualStrategyNumber, F_OIDEQ,
 				relation->rd_id);
-	scanDescriptor = systable_beginscan(pgConstraint, ConstraintRelidIndexId, true, NULL,
+	scanDescriptor = systable_beginscan(pgConstraint, ConstraintRelidTypidNameIndexId,
+										true, NULL,
 										scanKeyCount, scanKey);
 
 	heapTuple = systable_getnext(scanDescriptor);
@@ -482,7 +482,8 @@ GetTableForeignConstraintCommands(Oid relationId)
 	pgConstraint = heap_open(ConstraintRelationId, AccessShareLock);
 	ScanKeyInit(&scanKey[0], Anum_pg_constraint_conrelid, BTEqualStrategyNumber, F_OIDEQ,
 				relationId);
-	scanDescriptor = systable_beginscan(pgConstraint, ConstraintRelidIndexId, true, NULL,
+	scanDescriptor = systable_beginscan(pgConstraint, ConstraintRelidTypidNameIndexId,
+										true, NULL,
 										scanKeyCount, scanKey);
 
 	heapTuple = systable_getnext(scanDescriptor);
@@ -532,7 +533,8 @@ HasForeignKeyToReferenceTable(Oid relationId)
 	pgConstraint = heap_open(ConstraintRelationId, AccessShareLock);
 	ScanKeyInit(&scanKey[0], Anum_pg_constraint_conrelid, BTEqualStrategyNumber, F_OIDEQ,
 				relationId);
-	scanDescriptor = systable_beginscan(pgConstraint, ConstraintRelidIndexId, true, NULL,
+	scanDescriptor = systable_beginscan(pgConstraint, ConstraintRelidTypidNameIndexId,
+										true, NULL,
 										scanKeyCount, scanKey);
 
 	heapTuple = systable_getnext(scanDescriptor);
@@ -640,7 +642,7 @@ HeapTupleOfForeignConstraintIncludesColumn(HeapTuple heapTuple, Oid relationId,
 	{
 		AttrNumber attrNo = DatumGetInt16(columnArray[attrIdx]);
 
-		char *colName = get_relid_attribute_name(relationId, attrNo);
+		char *colName = get_attname(relationId, attrNo, false);
 		if (strncmp(colName, columnName, NAMEDATALEN) == 0)
 		{
 			return true;
