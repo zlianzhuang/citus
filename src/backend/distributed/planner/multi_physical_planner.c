@@ -42,6 +42,7 @@
 #include "distributed/multi_logical_optimizer.h"
 #include "distributed/multi_logical_planner.h"
 #include "distributed/multi_physical_planner.h"
+#include "distributed/log_utils.h"
 #include "distributed/pg_dist_partition.h"
 #include "distributed/pg_dist_shard.h"
 #include "distributed/query_pushdown_planning.h"
@@ -3754,7 +3755,7 @@ JoinPrunable(RangeTableFragment *leftFragment, RangeTableFragment *rightFragment
 	overlap = ShardIntervalsOverlap(leftFragmentInterval, rightFragmentInterval);
 	if (!overlap)
 	{
-		if (log_min_messages <= DEBUG2 || client_min_messages <= DEBUG2)
+		if (IsLoggableLevel(DEBUG2))
 		{
 			StringInfo leftString = FragmentIntervalString(leftFragmentInterval);
 			StringInfo rightString = FragmentIntervalString(rightFragmentInterval);
