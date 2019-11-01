@@ -92,6 +92,7 @@ static void ManageWorkerTasksHash(HTAB *WorkerTasksHash);
 static void ManageWorkerTask(WorkerTask *workerTask, HTAB *WorkerTasksHash);
 static void RemoveWorkerTask(WorkerTask *workerTask, HTAB *WorkerTasksHash);
 static void CreateJobDirectoryIfNotExists(uint64 jobId);
+static void MarkAsFailed(WorkerTask *workerTask);
 static int32 ConnectToLocalBackend(const char *databaseName, const char *userName);
 
 
@@ -931,8 +932,7 @@ ManageWorkerTask(WorkerTask *workerTask, HTAB *WorkerTasksHash)
 				}
 				else
 				{
-					workerTask->taskStatus = TASK_FAILED;
-					workerTask->failureCount++;
+					MarkAsFailed(workerTask);
 
 					MultiClientDisconnect(workerTask->connectionId);
 					workerTask->connectionId = INVALID_CONNECTION_ID;
@@ -940,8 +940,7 @@ ManageWorkerTask(WorkerTask *workerTask, HTAB *WorkerTasksHash)
 			}
 			else
 			{
-				workerTask->taskStatus = TASK_FAILED;
-				workerTask->failureCount++;
+				MarkAsFailed(workerTask);
 			}
 
 			break;
@@ -962,8 +961,7 @@ ManageWorkerTask(WorkerTask *workerTask, HTAB *WorkerTasksHash)
 				}
 				else if (queryStatus == CLIENT_QUERY_FAILED)
 				{
-					workerTask->taskStatus = TASK_FAILED;
-					workerTask->failureCount++;
+					MarkAsFailed(workerTask);
 				}
 				else
 				{
@@ -976,8 +974,7 @@ ManageWorkerTask(WorkerTask *workerTask, HTAB *WorkerTasksHash)
 			}
 			else if (resultStatus == CLIENT_RESULT_UNAVAILABLE)
 			{
-				workerTask->taskStatus = TASK_FAILED;
-				workerTask->failureCount++;
+				MarkAsFailed(workerTask);
 			}
 
 			/* clean up the connection if we are done with the task */
@@ -1062,6 +1059,14 @@ ManageWorkerTask(WorkerTask *workerTask, HTAB *WorkerTasksHash)
 	}
 
 	Assert(workerTask->failureCount <= MAX_TASK_FAILURE_COUNT);
+}
+
+
+static void
+MarkAsFailed(WorkerTask *workerTask)
+{
+	workerTask->taskStatus = TASK_FAILED;
+	workerTask->failureCount++;
 }
 
 
