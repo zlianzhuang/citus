@@ -1865,24 +1865,26 @@ MasterAggregateExpression(Aggref *originalAggregate,
 		{
 			Const *aggparam = NULL;
 			Var *column = NULL;
+			Const *nulltag = NULL;
 			List *aggArguments = NIL;
 			Aggref *newMasterAggregate = NULL;
 			Oid coordCombineId = AggregateFunctionOidWithoutInput(
 				COORD_COMBINE_AGGREGATE_NAME);
-
 			Oid workerReturnType = CSTRINGOID;
 			int32 workerReturnTypeMod = -1;
 			Oid workerCollationId = InvalidOid;
+			Oid resultType = exprType((Node *) originalAggregate);
 
 			aggparam = makeConst(OIDOID, -1, InvalidOid, sizeof(Oid),
 								 ObjectIdGetDatum(originalAggregate->aggfnoid),
 								 false, true);
 			column = makeVar(masterTableId, walkerContext->columnId, workerReturnType,
 							 workerReturnTypeMod, workerCollationId, columnLevelsUp);
+			nulltag = makeNullConst(resultType, -1, InvalidOid);
 
-			aggArguments = list_make1(makeTargetEntry((Expr *) aggparam, 1, NULL, false));
-			aggArguments = lappend(aggArguments, makeTargetEntry((Expr *) column, 2, NULL,
-																 false));
+			aggArguments = list_make3(makeTargetEntry((Expr *) aggparam, 1, NULL, false),
+									  makeTargetEntry((Expr *) column, 2, NULL, false),
+									  makeTargetEntry((Expr *) nulltag, 3, NULL, false));
 
 			/* coord_combine_agg(agg, workercol) */
 			newMasterAggregate = makeNode(Aggref);
@@ -1892,7 +1894,8 @@ MasterAggregateExpression(Aggref *originalAggregate,
 			newMasterAggregate->aggkind = AGGKIND_NORMAL;
 			newMasterAggregate->aggfilter = originalAggregate->aggfilter;
 			newMasterAggregate->aggtranstype = INTERNALOID;
-			newMasterAggregate->aggargtypes = list_make2_oid(OIDOID, CSTRINGOID);
+			newMasterAggregate->aggargtypes = list_make3_oid(OIDOID, CSTRINGOID,
+															 resultType);
 			newMasterAggregate->aggsplit = AGGSPLIT_SIMPLE;
 
 			newMasterExpression = (Expr *) newMasterAggregate;
