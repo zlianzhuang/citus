@@ -114,6 +114,10 @@ extern List * PlanRenameStmt(RenameStmt *renameStmt, const char *renameCommand);
 extern void ErrorIfUnsupportedRenameStmt(RenameStmt *renameStmt);
 
 
+/* role.c - forward declarations*/
+extern List * ProcessAlterRoleStmt(AlterRoleStmt *stmt, const char *queryString);
+
+
 /* schema.c - forward declarations */
 extern void ProcessDropSchemaStmt(DropStmt *dropSchemaStatement);
 extern List * PlanAlterTableSchemaStmt(AlterObjectSchemaStmt *stmt,
