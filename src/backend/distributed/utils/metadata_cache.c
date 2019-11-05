@@ -1530,21 +1530,27 @@ CitusHasBeenLoaded(void)
 	/* recheck presence until citus has been loaded */
 	if (!MetadataCache.extensionLoaded || creating_extension)
 	{
-		bool extensionPresent = false;
-		bool extensionScriptExecuted = true;
-
 		Oid extensionOid = get_extension_oid("citus", true);
-		if (extensionOid != InvalidOid)
+		bool citusExtensionExists = extensionOid != InvalidOid;
+		bool citusExtensionScriptIsExecuting = false;
+
+		if (creating_extension && CurrentExtensionObject != extensionOid &&
+			MetadataCache.extensionLoaded)
 		{
-			extensionPresent = true;
+			/*
+			 * We're creating an extension and it's not Citus, but Citus
+			 * has been loaded. Skip the remaining checks, which are only
+			 * relevant when loading Citus for the first time.
+			 */
+			return MetadataCache.extensionLoaded;
 		}
 
-		if (extensionPresent)
+		if (citusExtensionExists)
 		{
 			/* check if Citus extension objects are still being created */
 			if (creating_extension && CurrentExtensionObject == extensionOid)
 			{
-				extensionScriptExecuted = false;
+				citusExtensionScriptIsExecuting = true;
 			}
 
 			/*
@@ -1556,8 +1562,8 @@ CitusHasBeenLoaded(void)
 		}
 
 		/* we disable extension features during pg_upgrade */
-		MetadataCache.extensionLoaded = extensionPresent &&
-										extensionScriptExecuted &&
+		MetadataCache.extensionLoaded = citusExtensionExists &&
+										!citusExtensionScriptIsExecuting &&
 										!IsBinaryUpgrade;
 
 		if (MetadataCache.extensionLoaded)
