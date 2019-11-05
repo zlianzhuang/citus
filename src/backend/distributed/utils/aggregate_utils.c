@@ -202,7 +202,8 @@ agg_sfunc_handle_transition(StypeBox *box, FunctionCallInfo fcinfo, FunctionCall
 			MemoryContext oldContext;
 			if (!AggCheckCallContext(fcinfo, &aggregateContext))
 			{
-				elog(ERROR, "worker_partial_agg_sfunc called from non aggregate context");
+				elog(ERROR,
+					 "agg_sfunc_handle_transition called from non aggregate context");
 			}
 
 			oldContext = MemoryContextSwitchTo(aggregateContext);
@@ -247,7 +248,7 @@ agg_sfunc_handle_strict_uninit(StypeBox *box, FunctionCallInfo fcinfo, Datum val
 
 	if (!AggCheckCallContext(fcinfo, &aggregateContext))
 	{
-		elog(ERROR, "worker_partial_agg_sfunc called from non aggregate context");
+		elog(ERROR, "agg_sfunc_handle_strict_uninit called from non aggregate context");
 	}
 
 	oldContext = MemoryContextSwitchTo(aggregateContext);
@@ -433,13 +434,13 @@ coord_combine_agg_sfunc(PG_FUNCTION_ARGS)
 
 	if (aggform->aggcombinefn == InvalidOid)
 	{
-		elog(ERROR, "worker_partial_agg_sfunc expects an aggregate with COMBINEFUNC.");
+		elog(ERROR, "coord_combine_agg_sfunc expects an aggregate with COMBINEFUNC.");
 	}
 
 	if (aggform->aggtranstype == INTERNALOID)
 	{
 		elog(ERROR,
-			 "worker_partial_agg_sfunc does not support aggregates with INTERNAL transition state,");
+			 "coord_combine_agg_sfunc does not support aggregates with INTERNAL transition state,");
 	}
 
 	combine = aggform->aggcombinefn;
