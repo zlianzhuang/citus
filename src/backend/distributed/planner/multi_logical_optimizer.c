@@ -1880,6 +1880,7 @@ MasterAggregateExpression(Aggref *originalAggregate,
 								 false, true);
 			column = makeVar(masterTableId, walkerContext->columnId, workerReturnType,
 							 workerReturnTypeMod, workerCollationId, columnLevelsUp);
+			walkerContext->columnId++;
 			nulltag = makeNullConst(resultType, -1, InvalidOid);
 
 			aggArguments = list_make3(makeTargetEntry((Expr *) aggparam, 1, NULL, false),
