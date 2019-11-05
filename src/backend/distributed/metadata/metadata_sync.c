@@ -124,6 +124,13 @@ StartMetadatSyncToNode(char *nodeNameString, int32 nodePort)
 								escapedNodeName, nodePort)));
 	}
 
+	if (workerNode->groupId == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						errmsg("you cannot sync metadata to the coordinator"),
+						errhint("Coordinator already should have the metadata")));
+	}
+
 	MarkNodeHasMetadata(nodeNameString, nodePort, true);
 
 	if (!WorkerNodeIsPrimary(workerNode))
@@ -346,7 +353,7 @@ MetadataCreateCommands(void)
 	List *distributedTableList = DistributedTableList();
 	List *propagatedTableList = NIL;
 	bool includeNodesFromOtherClusters = true;
-	List *workerNodeList = ReadWorkerNodes(includeNodesFromOtherClusters);
+	List *workerNodeList = ReadDistNode(includeNodesFromOtherClusters);
 	ListCell *distributedTableCell = NULL;
 	char *nodeListInsertCommand = NULL;
 	bool includeSequenceDefaults = true;

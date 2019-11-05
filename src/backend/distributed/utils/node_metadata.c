@@ -49,6 +49,7 @@
 #include "utils/rel.h"
 #include "utils/relcache.h"
 
+#define INVALID_GROUP_ID -1
 
 /* default group size */
 int GroupSize = 1;
@@ -111,6 +112,7 @@ DefaultNodeMetadata()
 	NodeMetadata nodeMetadata = {
 		.nodeRack = WORKER_DEFAULT_RACK,
 		.shouldHaveShards = true,
+		.groupId = INVALID_GROUP_ID,
 	};
 	return nodeMetadata;
 }
@@ -935,7 +937,7 @@ FindWorkerNodeAnyCluster(const char *nodeName, int32 nodePort)
 
 
 /*
- * ReadWorkerNodes iterates over pg_dist_node table, converts each row
+ * ReadDistNode iterates over pg_dist_node table, converts each row
  * into it's memory representation (i.e., WorkerNode) and adds them into
  * a list. Lastly, the list is returned to the caller.
  *
@@ -943,7 +945,7 @@ FindWorkerNodeAnyCluster(const char *nodeName, int32 nodePort)
  * by includeNodesFromOtherClusters.
  */
 List *
-ReadWorkerNodes(bool includeNodesFromOtherClusters)
+ReadDistNode(bool includeNodesFromOtherClusters)
 {
 	SysScanDesc scanDescriptor = NULL;
 	ScanKeyData scanKey[1];
@@ -1091,9 +1093,15 @@ AddNodeMetadata(char *nodeName, int32 nodePort,
 	}
 
 	/* user lets Citus to decide on the group that the newly added node should be in */
-	if (nodeMetadata->groupId == 0)
+	if (nodeMetadata->groupId == INVALID_GROUP_ID)
 	{
 		nodeMetadata->groupId = GetNextGroupId();
+	}
+
+	/* if this is a coordinator, we shouldn't place shards on it */
+	if (nodeMetadata->groupId == 0)
+	{
+		nodeMetadata->shouldHaveShards = false;
 	}
 
 	/* if nodeRole hasn't been added yet there's a constraint for one-node-per-group */

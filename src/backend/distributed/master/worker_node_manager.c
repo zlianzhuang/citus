@@ -320,13 +320,24 @@ ActiveReadableNodeCount(void)
 
 
 /*
+ * NodeIsCoordinator returns true if the given node represents the coordinator.
+ */
+static bool
+NodeIsCoordinator(WorkerNode *node)
+{
+	return node->groupId == 0;
+}
+
+
+/*
  * ActiveNodeListFilterFunc returns a list of all active nodes that checkFunction
  * returns true for.
  * lockMode specifies which lock to use on pg_dist_node, this is necessary when
  * the caller wouldn't want nodes to be added concurrent to their use of this list
  */
 static List *
-FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *))
+FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *),
+						 bool excludeCoordinator)
 {
 	List *workerNodeList = NIL;
 	WorkerNode *workerNode = NULL;
@@ -345,6 +356,11 @@ FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *))
 
 	while ((workerNode = hash_seq_search(&status)) != NULL)
 	{
+		if (excludeCoordinator && NodeIsCoordinator(workerNode))
+		{
+			continue;
+		}
+
 		if (workerNode->isActive && checkFunction(workerNode))
 		{
 			WorkerNode *workerNodeCopy = palloc0(sizeof(WorkerNode));
@@ -365,8 +381,23 @@ FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *))
 List *
 ActivePrimaryNodeList(LOCKMODE lockMode)
 {
+	bool excludeCoordinator = true;
 	EnsureModificationsCanRun();
-	return FilterActiveNodeListFunc(lockMode, WorkerNodeIsPrimary);
+	return FilterActiveNodeListFunc(lockMode, WorkerNodeIsPrimary, excludeCoordinator);
+}
+
+
+/*
+ * ActiveReferenceTablePlacementNodeList returns the set of nodes that should
+ * have reference table placements. This includes all primaries, including the
+ * coordinator if known.
+ */
+List *
+ActiveReferenceTablePlacementNodeList(LOCKMODE lockMode)
+{
+	bool excludeCoordinator = false;
+	EnsureModificationsCanRun();
+	return FilterActiveNodeListFunc(lockMode, WorkerNodeIsPrimary, excludeCoordinator);
 }
 
 
@@ -377,8 +408,10 @@ ActivePrimaryNodeList(LOCKMODE lockMode)
 List *
 ActivePrimaryShouldHaveShardsNodeList(LOCKMODE lockMode)
 {
+	bool excludeCoordinator = true;
 	EnsureModificationsCanRun();
-	return FilterActiveNodeListFunc(lockMode, WorkerNodeIsPrimaryShouldHaveShardsNode);
+	return FilterActiveNodeListFunc(lockMode, WorkerNodeIsPrimaryShouldHaveShardsNode,
+									excludeCoordinator);
 }
 
 
@@ -388,7 +421,8 @@ ActivePrimaryShouldHaveShardsNodeList(LOCKMODE lockMode)
 List *
 ActiveReadableNodeList(void)
 {
-	return FilterActiveNodeListFunc(NoLock, WorkerNodeIsReadable);
+	bool excludeCoordinator = true;
+	return FilterActiveNodeListFunc(NoLock, WorkerNodeIsReadable, excludeCoordinator);
 }
 
 
