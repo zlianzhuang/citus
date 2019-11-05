@@ -126,9 +126,9 @@ StartMetadatSyncToNode(char *nodeNameString, int32 nodePort)
 
 	if (workerNode->groupId == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-						errmsg("you cannot sync metadata to the coordinator"),
-						errhint("Coordinator already should have the metadata")));
+		ereport(WARNING, (errmsg("%s:%d is the coordinator and already contains "
+								 "metadata, skipping.", nodeNameString, nodePort)));
+		return;
 	}
 
 	MarkNodeHasMetadata(nodeNameString, nodePort, true);

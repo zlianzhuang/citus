@@ -10,5 +10,5 @@ SELECT master_add_node('localhost', :master_port, groupid => 0) = :master_nodeid
 -- adding another node with groupid=0 should error out
 SELECT master_add_node('localhost', 12345, groupid => 0) = :master_nodeid;
 
--- start_metadata_sync_to_node() for coordinator should fail
+-- start_metadata_sync_to_node() for coordinator should warn
 SELECT start_metadata_sync_to_node('localhost', :master_port);
