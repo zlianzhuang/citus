@@ -12,8 +12,17 @@
 
 #include "citus_version.h"
 #include "distributed/commands.h"
+#include "distributed/commands/utility_hook.h"
+#include "distributed/deparser.h"
+#include "distributed/master_metadata_utility.h"
 #include "distributed/metadata_cache.h"
+#include "distributed/metadata_sync.h"
+#include "distributed/worker_transaction.h"
+#include "distributed/metadata/distobject.h"
 #include "nodes/parsenodes.h"
+#include "server/commands/extension.h"
+#include "server/catalog/pg_extension_d.h"
+#include "server/nodes/pg_list.h"
 
 /* Local functions forward declarations for helper functions */
 static char * ExtractNewExtensionVersion(Node *parsetree);
@@ -114,4 +123,97 @@ ExtractNewExtensionVersion(Node *parsetree)
 	}
 
 	return newVersion;
+}
+
+static bool
+ShouldPropagateExtensionCreate()
+{
+	// TODO: @onurctirtir implement this function
+	
+	return true;
+}
+
+// TODO: @onurctirtir
+// For now, I am not sure if we need to break CreateExtension prop logic into Plan and Process phases
+List *
+PlanCreateExtensionStmt(CreateExtensionStmt *stmt, const char *queryString)
+{
+	List *commands = NIL;
+
+	if (!ShouldPropagateExtensionCreate())
+	{
+		return NIL;
+	}
+
+	EnsureCoordinator();
+
+	//QualifyTreeNode((Node *) stmt);
+
+	// TODO: @onurctirtir, are they needed ??
+	//createExtensionStmtSql = DeparseCreateEnumStmt(stmt);
+	//createExtensionStmtSql = WrapCreateOrReplace(createExtensionStmtSql);
+	//EnsureSequentialModeForTypeDDL();
+
+	/* TODO: @onurctirtir, to prevent recursion with mx we disable ddl propagation, should we ?? */
+	commands = list_make3(DISABLE_DDL_PROPAGATION,
+						  (void *) queryString,
+						  ENABLE_DDL_PROPAGATION);
+
+	elog(WARNING, queryString);
+
+	return NodeDDLTaskList(ALL_WORKERS, commands);
+}
+
+void
+ProcessCreateExtensionStmt(CreateExtensionStmt *stmt, const char *queryString)
+{
+	// TODO: @onurctirtir implement me
+	const ObjectAddress *extensionAddress = NULL;
+	extensionAddress = GetObjectAddressFromParseTree((Node *) stmt, false);
+	
+	if (!ShouldPropagateExtensionCreate()) {
+		return;
+	}
+
+	// TODO: @onurctirtir hope it can find the dependencies of the extension
+	EnsureDependenciesExistsOnAllNodes(extensionAddress);
+
+	MarkObjectDistributed(extensionAddress);
+}
+
+List *
+ProcessDropExtensionStmt(DropStmt *stmt, const char *queryString)
+{
+	// TODO: @onurctirtir implement me
+	List *commands = NIL;
+	bool missingOk = true;
+	ListCell *dropExtensionEntry = NULL;
+
+	// iterate each extension in drop stmt 
+	foreach(dropExtensionEntry, stmt->objects)
+	{
+		char *extensionName = strVal(lfirst(dropExtensionEntry));
+
+		ObjectAddress *address = palloc0(sizeof(ObjectAddress));
+
+		// TODO: this logic could be moved to GetObjectAddress function but a bit tricky
+		Oid extensionoid = get_extension_oid(extensionName, missingOk);
+		
+		ObjectAddressSet(*address, ExtensionRelationId, extensionoid);
+
+		elog(DEBUG1, extensionName);
+
+		if (extensionoid == InvalidOid || !IsObjectDistributed(address))
+		{
+			continue;
+		}
+
+		UnmarkObjectDistributed(address);
+
+		commands = lappend(commands, (void *) queryString);
+
+		elog(DEBUG1, queryString);
+	}
+
+	return NodeDDLTaskList(ALL_WORKERS, commands);
 }
