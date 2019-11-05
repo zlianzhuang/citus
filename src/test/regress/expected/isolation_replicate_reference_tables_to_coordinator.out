@@ -1,0 +1,54 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1-begin s2-begin s1-update-dist-table s2-lock-ref-table-placement-on-coordinator s1-lock-ref-table-placement-on-coordinator s2-update-dist-table deadlock-checker-call s1-end s2-end
+create_distributed_table
+
+               
+step s1-begin: 
+    BEGIN;
+
+step s2-begin: 
+    BEGIN;
+
+step s1-update-dist-table: 
+    update dist_table set b = 2 where a = 1;
+
+step s2-lock-ref-table-placement-on-coordinator: 
+    SELECT * FROM ref_table_8000000 FOR UPDATE;
+
+a              
+
+1              
+2              
+3              
+4              
+step s1-lock-ref-table-placement-on-coordinator: 
+    SELECT * FROM ref_table_8000000 FOR UPDATE;
+ <waiting ...>
+step s2-update-dist-table: 
+    update dist_table set b = 2 where a = 1;
+ <waiting ...>
+step deadlock-checker-call: 
+  SELECT check_distributed_deadlocks();
+
+check_distributed_deadlocks
+
+t              
+step s1-lock-ref-table-placement-on-coordinator: <... completed>
+a              
+
+1              
+2              
+3              
+4              
+step s2-update-dist-table: <... completed>
+error in steps deadlock-checker-call s1-lock-ref-table-placement-on-coordinator s2-update-dist-table: ERROR:  canceling the transaction since it was involved in a distributed deadlock
+step s1-end: 
+    END;
+
+step s2-end: 
+    END;
+
+restore_isolation_tester_func
+
+               
