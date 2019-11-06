@@ -122,12 +122,12 @@ cte_2 AS (SELECT user_id FROM events_table)
 ((SELECT * FROM cte_1) UNION (SELECT * FROM cte_2) UNION (SELECT x FROM local_test)) INTERSECT (SELECT i FROM generate_series(0, 100) i)
 ORDER BY 1 DESC;
 DEBUG:  Local tables cannot be used in distributed queries.
-DEBUG:  generating subplan 16_1 for CTE cte_1: SELECT user_id FROM public.users_table
+DEBUG:  generating subplan 16_1 for subquery SELECT x FROM recursive_set_local.local_test
 DEBUG:  Router planner cannot handle multi-shard select queries
-DEBUG:  generating subplan 16_2 for CTE cte_2: SELECT user_id FROM public.events_table
+DEBUG:  generating subplan 16_2 for subquery SELECT user_id FROM (SELECT users_table.user_id FROM public.users_table) cte_1
 DEBUG:  Router planner cannot handle multi-shard select queries
-DEBUG:  generating subplan 16_3 for subquery SELECT x FROM recursive_set_local.local_test
-DEBUG:  Plan 16 query after replacing subqueries and CTEs: (SELECT cte_1.user_id FROM (SELECT intermediate_result.user_id FROM read_intermediate_result('16_1'::text, 'binary'::citus_copy_format) intermediate_result(user_id integer)) cte_1 UNION SELECT cte_2.user_id FROM (SELECT intermediate_result.user_id FROM read_intermediate_result('16_2'::text, 'binary'::citus_copy_format) intermediate_result(user_id integer)) cte_2 UNION SELECT intermediate_result.x FROM read_intermediate_result('16_3'::text, 'binary'::citus_copy_format) intermediate_result(x integer)) INTERSECT SELECT i.i FROM generate_series(0, 100) i(i) ORDER BY 1 DESC
+DEBUG:  generating subplan 16_3 for subquery SELECT user_id FROM (SELECT events_table.user_id FROM public.events_table) cte_2
+DEBUG:  Plan 16 query after replacing subqueries and CTEs: (SELECT intermediate_result.user_id FROM read_intermediate_result('16_2'::text, 'binary'::citus_copy_format) intermediate_result(user_id integer) UNION SELECT intermediate_result.user_id FROM read_intermediate_result('16_3'::text, 'binary'::citus_copy_format) intermediate_result(user_id integer) UNION SELECT intermediate_result.x FROM read_intermediate_result('16_1'::text, 'binary'::citus_copy_format) intermediate_result(x integer)) INTERSECT SELECT i.i FROM generate_series(0, 100) i(i) ORDER BY 1 DESC
 DEBUG:  Creating router plan
 DEBUG:  Plan is router executable
  user_id 
