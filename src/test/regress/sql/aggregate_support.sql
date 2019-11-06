@@ -46,29 +46,8 @@ create aggregate sum2_strict (int) (
     combinefunc = sum2_sfunc_strict
 );
 
-select create_distributed_function('sum2_sfunc(int,int)');
-select create_distributed_function('sum2_finalfunc(int)');
-select create_distributed_function('sum2_sfunc_strict(int,int)');
-select create_distributed_function('sum2_finalfunc_strict(int)');
-
--- This can use create_distributed_function once support for aggregates is merged
-select run_command_on_workers($$
-    set search_path to aggregate_support;
-    create aggregate sum2 (int) (
-        sfunc = sum2_sfunc,
-        stype = int,
-        finalfunc = sum2_finalfunc,
-        combinefunc = sum2_sfunc,
-        initcond = '0'
-    );
-
-    create aggregate sum2_strict (int) (
-        sfunc = sum2_sfunc_strict,
-        stype = int,
-        finalfunc = sum2_finalfunc_strict,
-        combinefunc = sum2_sfunc_strict
-    );
-$$);
+select create_distributed_function('sum2(int)');
+select create_distributed_function('sum2_strict(int)');
 
 create table aggdata (id int, key int, val int, valf float8);
 select create_distributed_table('aggdata', 'id');
