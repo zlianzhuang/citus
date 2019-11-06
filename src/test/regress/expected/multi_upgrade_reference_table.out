@@ -1100,7 +1100,4 @@ SELECT stop_metadata_sync_to_node('localhost', :worker_1_port);
  
 (1 row)
 
-RESET client_min_messages TO WARNING;
-ERROR:  syntax error at or near "TO"
-LINE 1: RESET client_min_messages TO WARNING;
-                                  ^
+RESET client_min_messages;

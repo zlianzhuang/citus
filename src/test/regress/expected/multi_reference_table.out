@@ -1585,10 +1585,11 @@ ALTER TABLE reference_table_test ADD COLUMN value_dummy INT;
 INSERT INTO reference_table_test VALUES (2, 2.0, '2', '2016-12-02');
 ROLLBACK;
 -- clean up tables, ...
+SET client_min_messages TO ERROR;
 DROP SEQUENCE example_ref_value_seq;
 DROP TABLE reference_table_test, reference_table_test_second, reference_table_test_third, 
 		   reference_table_test_fourth, reference_schema.reference_table_ddl, reference_table_composite,
-		   reference_schema.reference_table_test_sixth, reference_schema.reference_table_test_seventh,
 		   colocated_table_test, colocated_table_test_2, append_reference_tmp_table;
 DROP TYPE reference_comp_key;
 DROP SCHEMA reference_schema CASCADE;
+RESET client_min_messages;
