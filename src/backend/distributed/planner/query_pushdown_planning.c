@@ -182,7 +182,7 @@ ShouldUseSubqueryPushDown(Query *originalQuery, Query *rewrittenQuery)
 	 * standard_planner() may replace the sublinks with anti/semi joins and
 	 * MultiPlanTree() cannot plan such queries.
 	 */
-	if (WhereOrHavingClauseContainsSubquery(originalQuery))
+	if (WhereOrHavingClauseContainsSubquery(rewrittenQuery))
 	{
 		return true;
 	}
