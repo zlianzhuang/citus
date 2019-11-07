@@ -70,7 +70,7 @@ typedef struct NodeMetadata
 } NodeMetadata;
 
 /* local function forward declarations */
-static int ActivateNode(char *nodeName, int nodePort);
+static int ActivateNode(char *nodeName, int nodePort, int nodeid);
 static void RemoveNodeFromCluster(char *nodeName, int32 nodePort);
 static int AddNodeMetadata(char *nodeName, int32 nodePort, NodeMetadata
 						   *nodeMetadata, bool *nodeAlreadyExists);
@@ -88,6 +88,7 @@ static WorkerNode * ModifiableWorkerNode(const char *nodeName, int32 nodePort);
 static void UpdateNodeLocation(int32 nodeId, char *newNodeName, int32 newNodePort);
 static bool UnsetMetadataSyncedForAll(void);
 static WorkerNode * SetShouldHaveShards(WorkerNode *workerNode, bool shouldHaveShards);
+static void PropagateNodeStateMetadata(int nodeId, bool isActive);
 
 /* declarations for dynamic loading */
 PG_FUNCTION_INFO_V1(master_add_node);
@@ -163,7 +164,7 @@ master_add_node(PG_FUNCTION_ARGS)
 	 */
 	if (!nodeAlreadyExists)
 	{
-		ActivateNode(nodeNameString, nodePort);
+		ActivateNode(nodeNameString, nodePort, nodeId);
 	}
 
 	PG_RETURN_INT32(nodeId);
@@ -354,7 +355,7 @@ SetUpDistributedTableDependencies(WorkerNode *newWorkerNode)
 										  newWorkerNode->workerPort);
 
 		/*
-		 * Let the maintanince deamon do the hard work of syncing the metadata.
+		 * Let the maintenance daemon do the hard work of syncing the metadata.
 		 * We prefer this because otherwise node activation might fail within
 		 * transaction blocks.
 		 */
@@ -406,7 +407,7 @@ master_activate_node(PG_FUNCTION_ARGS)
 
 	WorkerNode *workerNode = ModifiableWorkerNode(text_to_cstring(nodeNameText),
 												  nodePort);
-	ActivateNode(workerNode->workerName, workerNode->workerPort);
+	ActivateNode(workerNode->workerName, workerNode->workerPort, workerNode->nodeId);
 
 	PG_RETURN_INT32(workerNode->nodeId);
 }
@@ -535,7 +536,7 @@ PrimaryNodeForGroup(int32 groupId, bool *groupContainsNodes)
  * given node.
  */
 static int
-ActivateNode(char *nodeName, int nodePort)
+ActivateNode(char *nodeName, int nodePort, int nodeId)
 {
 	WorkerNode *newWorkerNode = NULL;
 	bool isActive = true;
@@ -1230,8 +1231,35 @@ static WorkerNode *
 SetNodeState(char *nodeName, int nodePort, bool isActive)
 {
 	WorkerNode *workerNode = FindWorkerNodeAnyCluster(nodeName, nodePort);
-	return SetWorkerColumn(workerNode, Anum_pg_dist_node_isactive,
-						   BoolGetDatum(isActive));
+	WorkerNode *newWorkerNode = SetWorkerColumn(workerNode,
+												Anum_pg_dist_node_isactive,
+												BoolGetDatum(isActive));
+	PropagateNodeStateMetadata(workerNode->nodeId, isActive);
+
+	return newWorkerNode;
+}
+
+
+/*
+ * PropagateNodeStateMetadata propagates the change in isActive column of a
+ * pg_dist_node entry to the metadata nodes.
+ */
+static void
+PropagateNodeStateMetadata(int nodeId, bool isActive)
+{
+	StringInfo updateCommand = NULL;
+
+	if (CountPrimariesWithMetadata() == 0)
+	{
+		return;
+	}
+
+	updateCommand = makeStringInfo();
+	appendStringInfo(updateCommand,
+					 "UPDATE pg_dist_node SET isactive=%s WHERE nodeid=%d",
+					 isActive ? "true" : "false", nodeId);
+
+	SendCommandToWorkers(WORKERS_WITH_METADATA, updateCommand->data);
 }
 
 
