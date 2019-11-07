@@ -305,7 +305,7 @@ create_reference_table(PG_FUNCTION_ARGS)
 	 */
 	EnsureRelationKindSupported(relationId);
 
-	workerCount = ActivePrimaryNodeCount();
+	workerCount = ActivePrimaryWorkerNodeCount();
 	if (workerCount == 0)
 	{
 		char *relationName = get_rel_name(relationId);

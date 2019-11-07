@@ -70,12 +70,12 @@ extern WorkerNode * WorkerGetRoundRobinCandidateNode(List *workerNodeList,
 													 uint64 shardId,
 													 uint32 placementIndex);
 extern WorkerNode * WorkerGetLocalFirstCandidateNode(List *currentNodeList);
-extern uint32 ActivePrimaryNodeCount(void);
-extern List * ActivePrimaryNodeList(LOCKMODE lockMode);
-extern List * ActiveReferenceTablePlacementNodeList(LOCKMODE lockMode);
-extern List * ActivePrimaryShouldHaveShardsNodeList(LOCKMODE lockMode);
-extern uint32 ActiveReadableNodeCount(void);
-extern List * ActiveReadableNodeList(void);
+extern uint32 ActivePrimaryWorkerNodeCount(void);
+extern List * ActivePrimaryWorkerNodeList(LOCKMODE lockMode);
+extern List * ReferenceTablePlacementNodeList(LOCKMODE lockMode);
+extern List * DistributedTablePlacementNodeList(LOCKMODE lockMode);
+extern uint32 ActiveReadableWorkerNodeCount(void);
+extern List * ActiveReadableWorkerNodeList(void);
 extern WorkerNode * GetWorkerNodeByNodeId(int nodeId);
 extern WorkerNode * FindWorkerNode(char *nodeName, int32 nodePort);
 extern WorkerNode * FindWorkerNodeAnyCluster(const char *nodeName, int32 nodePort);
@@ -83,10 +83,9 @@ extern List * ReadDistNode(bool includeNodesFromOtherClusters);
 extern void EnsureCoordinator(void);
 extern uint32 GroupForNode(char *nodeName, int32 nodePort);
 extern WorkerNode * PrimaryNodeForGroup(int32 groupId, bool *groupContainsNodes);
-extern bool WorkerNodeIsPrimary(WorkerNode *worker);
-extern bool WorkerNodeIsSecondary(WorkerNode *worker);
-extern bool WorkerNodeIsPrimaryShouldHaveShardsNode(WorkerNode *worker);
-extern bool WorkerNodeIsReadable(WorkerNode *worker);
+extern bool NodeIsPrimary(WorkerNode *worker);
+extern bool NodeIsSecondary(WorkerNode *worker);
+extern bool NodeIsReadable(WorkerNode *worker);
 extern uint32 CountPrimariesWithMetadata(void);
 extern WorkerNode * GetFirstPrimaryWorkerNode(void);
 

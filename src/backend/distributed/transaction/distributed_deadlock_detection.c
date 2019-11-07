@@ -108,7 +108,7 @@ CheckForDistributedDeadlocks(void)
 	TransactionNode *transactionNode = NULL;
 	int edgeCount = 0;
 	int localGroupId = GetLocalGroupId();
-	List *workerNodeList = ActiveReadableNodeList();
+	List *workerNodeList = ActiveReadableWorkerNodeList();
 
 	/*
 	 * We don't need to do any distributed deadlock checking if there

@@ -228,7 +228,7 @@ static void
 AcquireDistributedLockOnRelations(List *relationIdList, LOCKMODE lockMode)
 {
 	Oid relationId = InvalidOid;
-	List *workerNodeList = ActivePrimaryNodeList(NoLock);
+	List *workerNodeList = ActivePrimaryWorkerNodeList(NoLock);
 	const char *lockModeText = LockModeToLockModeText(lockMode);
 
 	/*

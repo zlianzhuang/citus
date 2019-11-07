@@ -44,6 +44,9 @@ static List * PrimaryNodesNotInList(List *currentList);
 static WorkerNode * FindRandomNodeFromList(List *candidateWorkerNodeList);
 static bool OddNumber(uint32 number);
 static bool ListMember(List *currentList, WorkerNode *workerNode);
+static bool NodeIsPrimaryWorker(WorkerNode *node);
+static bool NodeCanHaveDistTablePlacements(WorkerNode *node);
+static bool NodeIsReadableWorker(WorkerNode *node);
 
 
 /* ------------------------------------------------------------
@@ -294,12 +297,12 @@ WorkerGetNodeWithName(const char *hostname)
 
 
 /*
- * ActivePrimaryNodeCount returns the number of groups with a primary in the cluster.
+ * ActivePrimaryWorkerNodeCount returns the number of groups with a primary in the cluster.
  */
 uint32
-ActivePrimaryNodeCount(void)
+ActivePrimaryWorkerNodeCount(void)
 {
-	List *workerNodeList = ActivePrimaryNodeList(NoLock);
+	List *workerNodeList = ActivePrimaryWorkerNodeList(NoLock);
 	uint32 liveWorkerCount = list_length(workerNodeList);
 
 	return liveWorkerCount;
@@ -307,12 +310,12 @@ ActivePrimaryNodeCount(void)
 
 
 /*
- * ActiveReadableNodeCount returns the number of groups with a node we can read from.
+ * ActiveReadableWorkerNodeCount returns the number of groups with a node we can read from.
  */
 uint32
-ActiveReadableNodeCount(void)
+ActiveReadableWorkerNodeCount(void)
 {
-	List *workerNodeList = ActiveReadableNodeList();
+	List *workerNodeList = ActiveReadableWorkerNodeList();
 	uint32 liveWorkerCount = list_length(workerNodeList);
 
 	return liveWorkerCount;
@@ -336,8 +339,7 @@ NodeIsCoordinator(WorkerNode *node)
  * the caller wouldn't want nodes to be added concurrent to their use of this list
  */
 static List *
-FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *),
-						 bool excludeCoordinator)
+FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *))
 {
 	List *workerNodeList = NIL;
 	WorkerNode *workerNode = NULL;
@@ -356,11 +358,6 @@ FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *),
 
 	while ((workerNode = hash_seq_search(&status)) != NULL)
 	{
-		if (excludeCoordinator && NodeIsCoordinator(workerNode))
-		{
-			continue;
-		}
-
 		if (workerNode->isActive && checkFunction(workerNode))
 		{
 			WorkerNode *workerNodeCopy = palloc0(sizeof(WorkerNode));
@@ -374,55 +371,88 @@ FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *),
 
 
 /*
- * ActivePrimaryNodeList returns a list of all the active primary nodes in workerNodeHash
- * lockMode specifies which lock to use on pg_dist_node, this is necessary when
- * the caller wouldn't want nodes to be added concurrent to their use of this list
+ * ActivePrimaryWorkerNodeList returns a list of all the active primary nodes
+ * in workerNodeHash lockMode specifies which lock to use on pg_dist_node,
+ * this is necessary when the caller wouldn't want nodes to be added concurrent
+ * to their use of this list.
  */
 List *
-ActivePrimaryNodeList(LOCKMODE lockMode)
+ActivePrimaryWorkerNodeList(LOCKMODE lockMode)
 {
-	bool excludeCoordinator = true;
 	EnsureModificationsCanRun();
-	return FilterActiveNodeListFunc(lockMode, WorkerNodeIsPrimary, excludeCoordinator);
+	return FilterActiveNodeListFunc(lockMode, NodeIsPrimaryWorker);
 }
 
 
 /*
- * ActiveReferenceTablePlacementNodeList returns the set of nodes that should
- * have reference table placements. This includes all primaries, including the
+ * NodeIsPrimaryWorker returns true if the node is a primary worker node.
+ */
+static bool
+NodeIsPrimaryWorker(WorkerNode *node)
+{
+	return !NodeIsCoordinator(node) && NodeIsPrimary(node);
+}
+
+
+/*
+ * ReferenceTablePlacementNodeList returns the set of nodes that should have
+ * reference table placements. This includes all primaries, including the
  * coordinator if known.
  */
 List *
-ActiveReferenceTablePlacementNodeList(LOCKMODE lockMode)
+ReferenceTablePlacementNodeList(LOCKMODE lockMode)
 {
-	bool excludeCoordinator = false;
 	EnsureModificationsCanRun();
-	return FilterActiveNodeListFunc(lockMode, WorkerNodeIsPrimary, excludeCoordinator);
+	return FilterActiveNodeListFunc(lockMode, NodeIsPrimary);
 }
 
 
 /*
- * ActivePrimaryShouldHaveShardsNodeList returns a list of all active, primary
+ * DistributedTablePlacementNodeList returns a list of all active, primary
  * worker nodes that can store new data, i.e shouldstoreshards is 'true'
  */
 List *
-ActivePrimaryShouldHaveShardsNodeList(LOCKMODE lockMode)
+DistributedTablePlacementNodeList(LOCKMODE lockMode)
 {
-	bool excludeCoordinator = true;
 	EnsureModificationsCanRun();
-	return FilterActiveNodeListFunc(lockMode, WorkerNodeIsPrimaryShouldHaveShardsNode,
-									excludeCoordinator);
+	return FilterActiveNodeListFunc(lockMode, NodeCanHaveDistTablePlacements);
 }
 
 
 /*
- * ActiveReadableNodeList returns a list of all nodes in workerNodeHash we can read from.
+ * NodeCanHaveDistTablePlacements returns true if the given node can have
+ * shards of a distributed table.
+ */
+static bool
+NodeCanHaveDistTablePlacements(WorkerNode *node)
+{
+	if (!NodeIsPrimary(node))
+	{
+		return false;
+	}
+
+	return node->shouldHaveShards;
+}
+
+
+/*
+ * ActiveReadableWorkerNodeList returns a list of all worker nodes in
+ * workerNodeHash that we can read from.
  */
 List *
-ActiveReadableNodeList(void)
+ActiveReadableWorkerNodeList(void)
 {
-	bool excludeCoordinator = true;
-	return FilterActiveNodeListFunc(NoLock, WorkerNodeIsReadable, excludeCoordinator);
+	return FilterActiveNodeListFunc(NoLock, NodeIsReadableWorker);
+}
+
+
+/*
+ * NodeIsReadableWorker returns true if the given node is a readable worker node.
+ */
+static bool
+NodeIsReadableWorker(WorkerNode *node)
+{
+	return !NodeIsCoordinator(node) && NodeIsReadable(node);
 }
 
 
@@ -448,7 +478,7 @@ PrimaryNodesNotInList(List *currentList)
 			continue;
 		}
 
-		if (WorkerNodeIsPrimary(workerNode))
+		if (NodeIsPrimary(workerNode))
 		{
 			workerNodeList = lappend(workerNodeList, workerNode);
 		}
@@ -558,7 +588,7 @@ WorkerNodeCompare(const void *lhsKey, const void *rhsKey, Size keySize)
 WorkerNode *
 GetFirstPrimaryWorkerNode(void)
 {
-	List *workerNodeList = ActivePrimaryNodeList(NoLock);
+	List *workerNodeList = ActivePrimaryWorkerNodeList(NoLock);
 	ListCell *workerNodeCell = NULL;
 	WorkerNode *firstWorkerNode = NULL;
 

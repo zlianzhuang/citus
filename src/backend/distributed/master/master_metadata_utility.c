@@ -185,7 +185,7 @@ DistributedTableSize(Oid relationId, char *sizeQuery)
 
 	ErrorIfNotSuitableToGetSize(relationId);
 
-	workerNodeList = ActiveReadableNodeList();
+	workerNodeList = ActiveReadableWorkerNodeList();
 
 	foreach(workerNodeCell, workerNodeList)
 	{

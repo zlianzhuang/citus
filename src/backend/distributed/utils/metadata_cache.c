@@ -626,7 +626,7 @@ LookupNodeForGroup(int32 groupId)
 
 		foundAnyNodes = true;
 
-		if (WorkerNodeIsReadable(workerNode))
+		if (NodeIsReadable(workerNode))
 		{
 			return workerNode;
 		}

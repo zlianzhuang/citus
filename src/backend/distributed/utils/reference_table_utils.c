@@ -247,7 +247,7 @@ ReplicateShardToAllNodes(ShardInterval *shardInterval)
 	ListCell *workerNodeCell = NULL;
 
 	/* prevent concurrent pg_dist_node changes */
-	workerNodeList = ActiveReferenceTablePlacementNodeList(ShareLock);
+	workerNodeList = ReferenceTablePlacementNodeList(ShareLock);
 
 	/*
 	 * We will iterate over all worker nodes and if a healthy placement does not exist
@@ -525,7 +525,7 @@ CompareOids(const void *leftElement, const void *rightElement)
 int
 ReferenceTableReplicationFactor(void)
 {
-	List *nodeList = ActiveReferenceTablePlacementNodeList(NoLock);
+	List *nodeList = ReferenceTablePlacementNodeList(NoLock);
 	int replicationFactor = list_length(nodeList);
 	return replicationFactor;
 }
