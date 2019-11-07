@@ -56,8 +56,6 @@ upgrade_to_reference_table(PG_FUNCTION_ARGS)
 {
 	Oid relationId = PG_GETARG_OID(0);
 	List *shardIntervalList = NIL;
-	ShardInterval *shardInterval = NULL;
-	uint64 shardId = INVALID_SHARD_ID;
 	DistTableCacheEntry *tableEntry = NULL;
 
 	CheckCitusVersion(ERROR);
@@ -95,6 +93,8 @@ upgrade_to_reference_table(PG_FUNCTION_ARGS)
 								  relationName)));
 	}
 
+	LockRelationOid(relationId, AccessExclusiveLock);
+
 	shardIntervalList = LoadShardIntervalList(relationId);
 	if (list_length(shardIntervalList) != 1)
 	{
@@ -105,12 +105,6 @@ upgrade_to_reference_table(PG_FUNCTION_ARGS)
 								  "relations with one shard can be upgraded to "
 								  "reference tables.", relationName)));
 	}
-
-	shardInterval = (ShardInterval *) linitial(shardIntervalList);
-	shardId = shardInterval->shardId;
-
-	LockShardDistributionMetadata(shardId, ExclusiveLock);
-	LockShardResource(shardId, ExclusiveLock);
 
 	ReplicateSingleShardTableToAllNodes(relationId);
 

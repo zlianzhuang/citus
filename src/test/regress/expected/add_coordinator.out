@@ -2,14 +2,6 @@
 -- ADD_COORDINATOR
 --
 SELECT master_add_node('localhost', :master_port, groupid => 0) AS master_nodeid \gset
-NOTICE:  Replicating reference table "orders_reference" to the node localhost:57636
-NOTICE:  Replicating reference table "customer" to the node localhost:57636
-NOTICE:  Replicating reference table "nation" to the node localhost:57636
-NOTICE:  Replicating reference table "part" to the node localhost:57636
-NOTICE:  Replicating reference table "supplier" to the node localhost:57636
-NOTICE:  Replicating reference table "users_ref_test_table" to the node localhost:57636
-NOTICE:  Replicating reference table "events_reference_table" to the node localhost:57636
-NOTICE:  Replicating reference table "users_reference_table" to the node localhost:57636
 -- adding the same node again should return the existing nodeid
 SELECT master_add_node('localhost', :master_port, groupid => 0) = :master_nodeid;
  ?column? 
