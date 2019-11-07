@@ -423,37 +423,40 @@ DropShards(Oid relationId, char *schemaName, char *relationName,
 			}
 
 			/*
-			 * The active DROP SCHEMA ... CASCADE will drop the shard, if we try to drop
-			 * it over another connection, we will get into a distributed deadlock.
+			 * The active DROP SCHEMA/DATABASE ... CASCADE will drop the shard, if we
+			 * try to drop it over another connection, we will get into a distributed
+			 * deadlock.
 			 */
-			if (!(shardPlacement->groupId == 0 &&
-				  IsCoordinator() &&
-				  DropSchemaInProgress()))
+			if (shardPlacement->groupId == 0 && IsCoordinator() &&
+				DropSchemaOrDBInProgress())
 			{
-				connection = GetPlacementConnection(connectionFlags, shardPlacement,
-													NULL);
-
-				RemoteTransactionBeginIfNecessary(connection);
-
-				if (PQstatus(connection->pgConn) != CONNECTION_OK)
-				{
-					uint64 placementId = shardPlacement->placementId;
-
-					ereport(WARNING, (errmsg("could not connect to shard \"%s\" on node "
-											 "\"%s:%u\"", shardRelationName, workerName,
-											 workerPort),
-									  errdetail("Marking this shard placement for "
-												"deletion")));
-
-					UpdateShardPlacementState(placementId, FILE_TO_DELETE);
-
-					continue;
-				}
-
-				MarkRemoteTransactionCritical(connection);
-
-				ExecuteCriticalRemoteCommand(connection, workerDropQuery->data);
+				DeleteShardPlacementRow(shardPlacement->placementId);
+				continue;
 			}
+
+			connection = GetPlacementConnection(connectionFlags, shardPlacement,
+												NULL);
+
+			RemoteTransactionBeginIfNecessary(connection);
+
+			if (PQstatus(connection->pgConn) != CONNECTION_OK)
+			{
+				uint64 placementId = shardPlacement->placementId;
+
+				ereport(WARNING, (errmsg("could not connect to shard \"%s\" on node "
+										 "\"%s:%u\"", shardRelationName, workerName,
+										 workerPort),
+								  errdetail("Marking this shard placement for "
+											"deletion")));
+
+				UpdateShardPlacementState(placementId, FILE_TO_DELETE);
+
+				continue;
+			}
+
+			MarkRemoteTransactionCritical(connection);
+
+			ExecuteCriticalRemoteCommand(connection, workerDropQuery->data);
 
 			DeleteShardPlacementRow(shardPlacement->placementId);
 		}
