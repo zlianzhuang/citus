@@ -63,7 +63,7 @@ SELECT user_id FROM (
 
 -- CTE outside of FROM/WHERE errors out
 WITH cte AS (
-	SELECT user_id FROM users_table WHERE value_2 IN (1, 2) LIMIT 1
+	SELECT user_id FROM users_table WHERE value_2 IN (1, 2) ORDER BY 1 DESC LIMIT 1
 )
 SELECT (SELECT * FROM cte);
 

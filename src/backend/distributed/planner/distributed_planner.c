@@ -821,7 +821,7 @@ InlineCTEs(Query *query)
 
 	List *copiedList = list_copy(query->cteList);
 
-	if (query->hasRecursive)
+	if (query->hasRecursive || query->hasModifyingCTE)
 	{
 		return;
 	}
@@ -844,7 +844,6 @@ InlineCTEs(Query *query)
 			query->cteList = list_delete(query->cteList, cte);
 		}
 	}
-
 }
 
 
@@ -935,14 +934,17 @@ inline_cte_walker(Node *node, inline_cte_walker_context *context)
 			int columnAliasCount = list_length(columnAliasList);
 			int columnNumber = 1;
 
-			for (;columnNumber < list_length(rte->subquery->targetList)+1; ++columnNumber)
+			for (; columnNumber < list_length(rte->subquery->targetList) + 1;
+				 ++columnNumber)
 			{
 				if (columnAliasCount >= columnNumber)
 				{
-				Value *columnAlias = (Value *) list_nth(columnAliasList, columnNumber - 1);
-				Assert(IsA(columnAlias, String));
-				TargetEntry *te = list_nth(rte->subquery->targetList, columnNumber - 1);
-				te->resname = strVal(columnAlias);
+					Value *columnAlias = (Value *) list_nth(columnAliasList,
+															columnNumber - 1);
+					Assert(IsA(columnAlias, String));
+					TargetEntry *te = list_nth(rte->subquery->targetList, columnNumber -
+											   1);
+					te->resname = strVal(columnAlias);
 				}
 			}
 
