@@ -1083,7 +1083,7 @@ AddNodeMetadata(char *nodeName, int32 nodePort,
 	}
 
 	/* if this is a coordinator, we shouldn't place shards on it */
-	if (nodeMetadata->groupId == 0)
+	if (nodeMetadata->groupId == COORDINATOR_GROUP_ID)
 	{
 		nodeMetadata->shouldHaveShards = false;
 	}

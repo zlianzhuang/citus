@@ -36,6 +36,8 @@
 
 #define WORKER_DEFAULT_CLUSTER "default"
 
+#define COORDINATOR_GROUP_ID 0
+
 /*
  * In memory representation of pg_dist_node table elements. The elements are hold in
  * WorkerNodeHash table.
@@ -86,6 +88,7 @@ extern WorkerNode * PrimaryNodeForGroup(int32 groupId, bool *groupContainsNodes)
 extern bool NodeIsPrimary(WorkerNode *worker);
 extern bool NodeIsSecondary(WorkerNode *worker);
 extern bool NodeIsReadable(WorkerNode *worker);
+extern bool NodeIsCoordinator(WorkerNode *node);
 extern uint32 CountPrimariesWithMetadata(void);
 extern WorkerNode * GetFirstPrimaryWorkerNode(void);
 

@@ -325,10 +325,10 @@ ActiveReadableWorkerNodeCount(void)
 /*
  * NodeIsCoordinator returns true if the given node represents the coordinator.
  */
-static bool
+bool
 NodeIsCoordinator(WorkerNode *node)
 {
-	return node->groupId == 0;
+	return node->groupId == COORDINATOR_GROUP_ID;
 }
 
 

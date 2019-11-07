@@ -427,7 +427,8 @@ DropShards(Oid relationId, char *schemaName, char *relationName,
 			 * try to drop it over another connection, we will get into a distributed
 			 * deadlock.
 			 */
-			if (shardPlacement->groupId == 0 && IsCoordinator() &&
+			if (shardPlacement->groupId == COORDINATOR_GROUP_ID &&
+				IsCoordinator() &&
 				DropSchemaOrDBInProgress())
 			{
 				DeleteShardPlacementRow(shardPlacement->placementId);

@@ -118,7 +118,7 @@ TargetWorkerSetNodeList(TargetWorkerSet targetWorkerSet, LOCKMODE lockMode)
 	foreach(workerNodeCell, workerNodeList)
 	{
 		WorkerNode *workerNode = (WorkerNode *) lfirst(workerNodeCell);
-		if (workerNode->groupId == 0)
+		if (NodeIsCoordinator(workerNode))
 		{
 			continue;
 		}

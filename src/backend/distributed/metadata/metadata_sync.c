@@ -124,7 +124,7 @@ StartMetadatSyncToNode(char *nodeNameString, int32 nodePort)
 								escapedNodeName, nodePort)));
 	}
 
-	if (workerNode->groupId == 0)
+	if (NodeIsCoordinator(workerNode))
 	{
 		ereport(NOTICE, (errmsg("%s:%d is the coordinator and already contains "
 								"metadata, skipping syncing the metadata",
