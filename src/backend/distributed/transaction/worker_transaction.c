@@ -118,10 +118,6 @@ TargetWorkerSetNodeList(TargetWorkerSet targetWorkerSet, LOCKMODE lockMode)
 	foreach(workerNodeCell, workerNodeList)
 	{
 		WorkerNode *workerNode = (WorkerNode *) lfirst(workerNodeCell);
-		if (NodeIsCoordinator(workerNode))
-		{
-			continue;
-		}
 
 		if (targetWorkerSet == WORKERS_WITH_METADATA &&
 			(!workerNode->hasMetadata || !workerNode->metadataSynced))
