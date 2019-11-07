@@ -1086,6 +1086,7 @@ AddNodeMetadata(char *nodeName, int32 nodePort,
 	if (nodeMetadata->groupId == COORDINATOR_GROUP_ID)
 	{
 		nodeMetadata->shouldHaveShards = false;
+		nodeMetadata->hasMetadata = true;
 	}
 
 	/* if nodeRole hasn't been added yet there's a constraint for one-node-per-group */
