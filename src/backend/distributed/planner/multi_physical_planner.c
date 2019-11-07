@@ -103,7 +103,7 @@ static List * QuerySelectClauseList(MultiNode *multiNode);
 static List * QueryJoinClauseList(MultiNode *multiNode);
 static List * QueryFromList(List *rangeTableList);
 static Node * QueryJoinTree(MultiNode *multiNode, List *dependedJobList,
-							List **rangeTableList);
+							List **rangeTableList, List **selectList);
 static RangeTblEntry * JoinRangeTableEntry(JoinExpr *joinExpr, List *dependedJobList,
 										   List *rangeTableList);
 static int ExtractRangeTableId(Node *node);
@@ -654,7 +654,8 @@ BuildJobQuery(MultiNode *multiNode, List *dependedJobList)
 
 	/* build the join tree and the range table list */
 	rangeTableList = BaseRangeTableList(multiNode);
-	joinRoot = QueryJoinTree(multiNode, dependedJobList, &rangeTableList);
+	joinRoot = QueryJoinTree(multiNode, dependedJobList, &rangeTableList,
+							 &selectClauseList);
 
 	/* update the column attributes for target entries */
 	if (updateColumnAttributes)
@@ -678,7 +679,7 @@ BuildJobQuery(MultiNode *multiNode, List *dependedJobList)
 
 
 	/* build the where clause list using select predicates */
-	selectClauseList = QuerySelectClauseList(multiNode);
+	selectClauseList = list_concat(selectClauseList, QuerySelectClauseList(multiNode));
 
 	/* set correct column attributes for select and having clauses */
 	if (updateColumnAttributes)
@@ -1152,7 +1153,8 @@ QueryJoinClauseList(MultiNode *multiNode)
  * the entries at the same time as the tree to know the appropriate rtindex.
  */
 static Node *
-QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList)
+QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList,
+			  List **selectClauseList)
 {
 	CitusNodeTag nodeType = CitusNodeTag(multiNode);
 
@@ -1169,12 +1171,12 @@ QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList
 			joinExpr->jointype = joinNode->joinType;
 			joinExpr->isNatural = false;
 			joinExpr->larg = QueryJoinTree(binaryNode->leftChildNode, dependedJobList,
-										   rangeTableList);
-			joinExpr->rarg = QueryJoinTree(binaryNode->rightChildNode, dependedJobList,
-										   rangeTableList);
+										   rangeTableList, selectClauseList);
 			joinExpr->usingClause = NIL;
 			joinExpr->alias = NULL;
 			joinExpr->rtindex = list_length(*rangeTableList) + 1;
+			joinExpr->rarg = QueryJoinTree(binaryNode->rightChildNode, dependedJobList,
+										   rangeTableList, selectClauseList);
 
 			/*
 			 * PostgreSQL's optimizer may mark left joins as anti-joins, when there
@@ -1193,6 +1195,50 @@ QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList
 				joinExpr->jointype = JOIN_LEFT;
 			}
 
+			/* make AND clauses explicit after fixing them */
+			joinExpr->quals = (Node *) make_ands_explicit(joinNode->joinClauseList);
+			if (joinExpr->jointype == JOIN_SEMI)
+			{
+				SubLink *subLink = makeNode(SubLink);
+				rangeTableEntry = lsecond(*rangeTableList);
+				ModifyRangeTblExtraData(rangeTableEntry, GetRangeTblKind(rangeTableEntry),
+										NULL, NULL, list_make1_int(1));
+				*rangeTableList = list_make1(linitial(*rangeTableList));
+				subLink->subLinkType = ANY_SUBLINK;
+				subLink->testexpr = joinExpr->quals;
+				OpExpr *opExpr = (OpExpr *) subLink->testexpr;
+				Var *var = llast(opExpr->args);
+				var->varno = 1;
+				Param *param = makeNode(Param);
+				param->paramkind = 2;
+				param->paramtype = var->vartype;
+				param->paramtypmod = var->vartypmod;
+				param->paramid = 1;
+				param->paramid = 1;
+				llast(opExpr->args) = param;
+				Query *query = makeNode(Query);
+				query->commandType = 1;
+				query->canSetTag = true;
+				query->rtable = list_make1(rangeTableEntry);
+				RangeTblRef *rtref = makeNode(RangeTblRef);
+				rtref->rtindex = 1;
+				FromExpr *fromExpr = makeNode(FromExpr);
+				fromExpr->fromlist = list_make1(rtref);
+				TargetEntry *targetEntry = makeNode(TargetEntry);
+				targetEntry->expr = (Expr *) var;
+				targetEntry->resno = 1;
+				targetEntry->resname = "i_im_id";
+				targetEntry->resorigtbl = rangeTableEntry->relid;
+				targetEntry->resorigcol = 5;
+				query->targetList = list_make1(targetEntry);
+
+				query->jointree = fromExpr;
+
+				subLink->subselect = (Node *) query;
+				*selectClauseList = lappend(*selectClauseList, subLink);
+				return joinExpr->larg;
+			}
+
 			rangeTableEntry = JoinRangeTableEntry(joinExpr, dependedJobList,
 												  *rangeTableList);
 			*rangeTableList = lappend(*rangeTableList, rangeTableEntry);
@@ -1209,8 +1255,6 @@ QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList
 				column->varoattno = column->varattno;
 			}
 
-			/* make AND clauses explicit after fixing them */
-			joinExpr->quals = (Node *) make_ands_explicit(joinNode->joinClauseList);
 
 			return (Node *) joinExpr;
 		}
@@ -1224,7 +1268,7 @@ QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList
 			{
 				/* MultiTable is actually a subquery, return the query tree below */
 				Node *childNode = QueryJoinTree(unaryNode->childNode, dependedJobList,
-												rangeTableList);
+												rangeTableList, selectClauseList);
 
 				return childNode;
 			}
@@ -1240,7 +1284,9 @@ QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList
 
 		case T_MultiCollect:
 		{
-			List *tableIdList = OutputTableIdList(multiNode);
+			List *tableIdList = list_make1_int(linitial_int(OutputTableIdList(
+																multiNode)));
+
 			Job *dependedJob = JobForTableIdList(dependedJobList, tableIdList);
 			List *dependedTargetList = dependedJob->jobQuery->targetList;
 
@@ -1268,9 +1314,9 @@ QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList
 			joinExpr->jointype = JOIN_INNER;
 			joinExpr->isNatural = false;
 			joinExpr->larg = QueryJoinTree(binaryNode->leftChildNode, dependedJobList,
-										   rangeTableList);
+										   rangeTableList, selectClauseList);
 			joinExpr->rarg = QueryJoinTree(binaryNode->rightChildNode, dependedJobList,
-										   rangeTableList);
+										   rangeTableList, selectClauseList);
 			joinExpr->usingClause = NIL;
 			joinExpr->alias = NULL;
 			joinExpr->quals = NULL;
@@ -1295,7 +1341,7 @@ QueryJoinTree(MultiNode *multiNode, List *dependedJobList, List **rangeTableList
 			Assert(UnaryOperator(multiNode));
 
 			childNode = QueryJoinTree(unaryNode->childNode, dependedJobList,
-									  rangeTableList);
+									  rangeTableList, selectClauseList);
 
 			return childNode;
 		}
@@ -2681,6 +2727,25 @@ ShardIntervalsEqual(FmgrInfo *comparisonFunction, ShardInterval *firstInterval,
 }
 
 
+static bool
+SubqueryDoReplace(Node *node, *context)
+{
+	if (node == NULL)
+	{
+		return false;
+	}
+
+	if (IsA(node, Query))
+	{
+		UpdateRangeTableAlias(query->rtable, (List *) *context);
+		query_tree_walker(node, SubqueryDoReplace, context, 0);
+	}
+
+
+	return expression_tree_walker(node, SubqueryDoReplace, NULL);
+}
+
+
 /*
  * SqlTaskList creates a list of SQL tasks to execute the given job. For this,
  * the function walks over each range table in the job's range table list, gets
@@ -2772,6 +2837,7 @@ SqlTaskList(Job *job)
 
 		/* update range table entries with fragment aliases (in place) */
 		taskQuery = copyObject(jobQuery);
+		SubqueryDoReplace(taskQuery, &fragmentCombination);
 		fragmentRangeTableList = taskQuery->rtable;
 		UpdateRangeTableAlias(fragmentRangeTableList, fragmentCombination);
 

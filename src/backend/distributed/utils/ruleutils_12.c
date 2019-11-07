@@ -7227,6 +7227,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 
 		switch (j->jointype)
 		{
+			case JOIN_SEMI:
 			case JOIN_INNER:
 				if (j->quals)
 					appendContextKeyword(context, " JOIN ",

@@ -1344,7 +1344,7 @@ ExtractFromExpressionWalker(Node *node, QualifierWalkerContext *walkerContext)
 		}
 
 		/* return outer join clauses in a separate list */
-		if (joinType == JOIN_INNER || joinType == JOIN_SEMI)
+		if (joinType == JOIN_SEMI)
 		{
 			walkerContext->baseQualifierList =
 				list_concat(walkerContext->baseQualifierList, joinQualifierList);

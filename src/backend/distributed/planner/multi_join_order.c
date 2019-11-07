@@ -127,7 +127,7 @@ JoinExprList(FromExpr *fromExpr)
 
 			/* join the previous node with nextRangeTableRef */
 			newJoinExpr = makeNode(JoinExpr);
-			newJoinExpr->jointype = JOIN_INNER;
+			newJoinExpr->jointype = JOIN_SEMI;
 			newJoinExpr->rarg = (Node *) nextRangeTableRef;
 			newJoinExpr->quals = NULL;
 
@@ -335,7 +335,7 @@ JoinOrderForTable(TableEntry *firstTable, List *tableEntryList, List *joinClause
 			TableEntry *pendingTable = (TableEntry *) lfirst(pendingTableCell);
 			JoinOrderNode *pendingJoinNode = NULL;
 			JoinRuleType pendingJoinRuleType = JOIN_RULE_LAST;
-			JoinType joinType = JOIN_INNER;
+			JoinType joinType = JOIN_SEMI;
 
 			/* evaluate all join rules for this pending table */
 			pendingJoinNode = EvaluateJoinRules(joinedTableList, currentJoinNode,
@@ -773,7 +773,8 @@ ReferenceJoin(JoinOrderNode *currentJoinNode, TableEntry *candidateTable,
 	 * Right join requires existing (left) table to be reference table, full outer
 	 * join requires both tables to be reference tables.
 	 */
-	if ((joinType == JOIN_INNER || joinType == JOIN_LEFT || joinType == JOIN_ANTI) &&
+	if ((joinType == JOIN_INNER || joinType == JOIN_LEFT || joinType == JOIN_ANTI ||
+		 joinType == JOIN_SEMI) &&
 		candidatePartitionMethod == DISTRIBUTE_BY_NONE)
 	{
 		performReferenceJoin = true;
@@ -1107,7 +1108,7 @@ MakeJoinOrderNode(TableEntry *tableEntry, JoinRuleType joinRuleType,
 	JoinOrderNode *joinOrderNode = palloc0(sizeof(JoinOrderNode));
 	joinOrderNode->tableEntry = tableEntry;
 	joinOrderNode->joinRuleType = joinRuleType;
-	joinOrderNode->joinType = JOIN_INNER;
+	joinOrderNode->joinType = JOIN_SEMI;
 	joinOrderNode->partitionColumn = partitionColumn;
 	joinOrderNode->partitionMethod = partitionMethod;
 	joinOrderNode->joinClauseList = NIL;
