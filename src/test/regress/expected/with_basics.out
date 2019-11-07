@@ -96,11 +96,14 @@ SELECT user_id FROM (
 
 -- CTE outside of FROM/WHERE errors out
 WITH cte AS (
-	SELECT user_id FROM users_table WHERE value_2 IN (1, 2)
+	SELECT user_id FROM users_table WHERE value_2 IN (1, 2) LIMIT 1
 )
 SELECT (SELECT * FROM cte);
-ERROR:  more than one row returned by a subquery used as an expression
-CONTEXT:  while executing command on localhost:57637
+ user_id 
+---------
+       5
+(1 row)
+
 WITH cte_basic AS (
 	SELECT user_id FROM users_table WHERE user_id = 1
 )

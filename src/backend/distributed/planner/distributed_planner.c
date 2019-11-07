@@ -106,6 +106,8 @@ typedef struct inline_cte_walker_context
 	int levelsup;
 	int refcount;              /* number of remaining references */
 	Query *ctequery;           /* query to substitute */
+
+	List *aliascolnames;  /* citus addition */
 } inline_cte_walker_context;
 static bool inline_cte_walker(Node *node, inline_cte_walker_context *context);
 static void inline_cte(Query *mainQuery, CommonTableExpr *cte);
@@ -819,6 +821,11 @@ InlineCTEs(Query *query)
 
 	List *copiedList = list_copy(query->cteList);
 
+	if (query->hasRecursive)
+	{
+		return;
+	}
+
 	foreach(cteCell, copiedList)
 	{
 		CommonTableExpr *cte = (CommonTableExpr *) lfirst(cteCell);
@@ -855,6 +862,7 @@ inline_cte(Query *mainQuery, CommonTableExpr *cte)
 	context.levelsup = -1;
 	context.refcount = cte->cterefcount;
 	context.ctequery = castNode(Query, cte->ctequery);
+	context.aliascolnames = cte->aliascolnames;
 
 	(void) inline_cte_walker((Node *) mainQuery, &context);
 
@@ -921,6 +929,22 @@ inline_cte_walker(Node *node, inline_cte_walker_context *context)
 			rte->rtekind = RTE_SUBQUERY;
 			rte->subquery = newquery;
 			rte->security_barrier = false;
+
+			/* Citus addition */
+			List *columnAliasList = context->aliascolnames;
+			int columnAliasCount = list_length(columnAliasList);
+			int columnNumber = 1;
+
+			for (;columnNumber < list_length(rte->subquery->targetList)+1; ++columnNumber)
+			{
+				if (columnAliasCount >= columnNumber)
+				{
+				Value *columnAlias = (Value *) list_nth(columnAliasList, columnNumber - 1);
+				Assert(IsA(columnAlias, String));
+				TargetEntry *te = list_nth(rte->subquery->targetList, columnNumber - 1);
+				te->resname = strVal(columnAlias);
+				}
+			}
 
 			/* Zero out CTE-specific fields */
 			rte->ctename = NULL;
