@@ -19,6 +19,7 @@
 #include "distributed/citus_nodefuncs.h"
 #include "distributed/citus_nodes.h"
 #include "distributed/function_call_delegation.h"
+
 #include "distributed/insert_select_planner.h"
 #include "distributed/intermediate_results.h"
 #include "distributed/metadata_cache.h"
@@ -40,8 +41,8 @@
 #include "parser/parsetree.h"
 #include "parser/parse_type.h"
 #include "rewrite/rewriteManip.h"
-#if PG_VERSION_NUM >= 120000
 #include "optimizer/optimizer.h"
+#if PG_VERSION_NUM >= 120000
 #include "optimizer/plancat.h"
 #else
 #include "optimizer/cost.h"
@@ -830,9 +831,9 @@ InlineCTEs(Query *query)
 	{
 		CommonTableExpr *cte = (CommonTableExpr *) lfirst(cteCell);
 
-		if ((cte->ctematerialized == CTEMaterializeNever ||
-			 (cte->ctematerialized == CTEMaterializeDefault &&
-			  cte->cterefcount == 1)) &&
+		if (/*(cte->ctematerialized == CTEMaterializeNever || */
+			/*(cte->ctematerialized == CTEMaterializeDefault && */
+			cte->cterefcount == 1 && /*)) && */
 			!cte->cterecursive &&
 			cmdType == CMD_SELECT &&
 			!contain_dml(cte->ctequery) &&
@@ -912,6 +913,11 @@ inline_cte_walker(Node *node, inline_cte_walker_context *context)
 			 */
 			Query *newquery = copyObject(context->ctequery);
 
+			/* Citus addition */
+			List *columnAliasList = context->aliascolnames;
+			int columnAliasCount = list_length(columnAliasList);
+			int columnNumber = 1;
+
 			if (context->levelsup > 0)
 			{
 				IncrementVarSublevelsUp((Node *) newquery, context->levelsup, 1);
@@ -929,11 +935,6 @@ inline_cte_walker(Node *node, inline_cte_walker_context *context)
 			rte->subquery = newquery;
 			rte->security_barrier = false;
 
-			/* Citus addition */
-			List *columnAliasList = context->aliascolnames;
-			int columnAliasCount = list_length(columnAliasList);
-			int columnNumber = 1;
-
 			for (; columnNumber < list_length(rte->subquery->targetList) + 1;
 				 ++columnNumber)
 			{
@@ -941,9 +942,11 @@ inline_cte_walker(Node *node, inline_cte_walker_context *context)
 				{
 					Value *columnAlias = (Value *) list_nth(columnAliasList,
 															columnNumber - 1);
-					Assert(IsA(columnAlias, String));
+
 					TargetEntry *te = list_nth(rte->subquery->targetList, columnNumber -
 											   1);
+					Assert(IsA(columnAlias, String));
+
 					te->resname = strVal(columnAlias);
 				}
 			}
