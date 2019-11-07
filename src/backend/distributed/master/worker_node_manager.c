@@ -371,8 +371,8 @@ FilterActiveNodeListFunc(LOCKMODE lockMode, bool (*checkFunction)(WorkerNode *))
 
 
 /*
- * ActivePrimaryWorkerNodeList returns a list of all the active primary nodes
- * in workerNodeHash lockMode specifies which lock to use on pg_dist_node,
+ * ActivePrimaryWorkerNodeList returns a list of all active primary worker nodes
+ * in workerNodeHash. lockMode specifies which lock to use on pg_dist_node,
  * this is necessary when the caller wouldn't want nodes to be added concurrent
  * to their use of this list.
  */
@@ -381,6 +381,18 @@ ActivePrimaryWorkerNodeList(LOCKMODE lockMode)
 {
 	EnsureModificationsCanRun();
 	return FilterActiveNodeListFunc(lockMode, NodeIsPrimaryWorker);
+}
+
+
+/*
+ * ActivePrimaryNodeList returns a list of all active primary nodes in
+ * workerNodeHash.
+ */
+List *
+ActivePrimaryNodeList(LOCKMODE lockMode)
+{
+	EnsureModificationsCanRun();
+	return FilterActiveNodeListFunc(lockMode, NodeIsPrimary);
 }
 
 
@@ -436,8 +448,8 @@ NodeCanHaveDistTablePlacements(WorkerNode *node)
 
 
 /*
- * ActiveReadableWorkerNodeList returns a list of all worker nodes in
- * workerNodeHash that we can read from.
+ * ActiveReadableWorkerNodeList returns a list of all nodes in workerNodeHash
+ * that are readable workers.
  */
 List *
 ActiveReadableWorkerNodeList(void)

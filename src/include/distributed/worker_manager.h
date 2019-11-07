@@ -74,6 +74,7 @@ extern WorkerNode * WorkerGetRoundRobinCandidateNode(List *workerNodeList,
 extern WorkerNode * WorkerGetLocalFirstCandidateNode(List *currentNodeList);
 extern uint32 ActivePrimaryWorkerNodeCount(void);
 extern List * ActivePrimaryWorkerNodeList(LOCKMODE lockMode);
+extern List * ActivePrimaryNodeList(LOCKMODE lockMode);
 extern List * ReferenceTablePlacementNodeList(LOCKMODE lockMode);
 extern List * DistributedTablePlacementNodeList(LOCKMODE lockMode);
 extern uint32 ActiveReadableWorkerNodeCount(void);
