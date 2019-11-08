@@ -3,9 +3,6 @@ setup
   SELECT citus_internal.replace_isolation_tester_func();
   SELECT citus_internal.refresh_isolation_tester_prepared_statement();
 
-  SET citus.next_shard_id TO 8000000;
-  SET citus.next_placement_id TO 8000000;
-
   SELECT master_add_node('localhost', 57636);
 
   CREATE TABLE ref_table(a int primary key);
@@ -18,9 +15,9 @@ setup
 
 teardown
 {
+  SELECT citus_internal.restore_isolation_tester_func();
   DROP TABLE ref_table, dist_table;
   SELECT master_remove_node('localhost', 57636);
-  SELECT citus_internal.restore_isolation_tester_func();
 }
 
 session "s1"
@@ -47,7 +44,13 @@ step "s1-update-ref-table"
 
 step "s1-lock-ref-table-placement-on-coordinator"
 {
-    SELECT * FROM ref_table_8000000 FOR UPDATE;
+    DO $$
+      DECLARE refshardid int;
+      BEGIN
+        SELECT shardid INTO refshardid FROM pg_dist_shard WHERE logicalrelid='ref_table'::regclass;
+        EXECUTE format('SELECT * from ref_table_%s FOR UPDATE', refshardid::text);
+      END
+    $$;
 }
 
 session "s2"
@@ -69,7 +72,13 @@ step "s2-update-dist-table"
 
 step "s2-lock-ref-table-placement-on-coordinator"
 {
-    SELECT * FROM ref_table_8000000 FOR UPDATE;
+    DO $$
+      DECLARE refshardid int;
+      BEGIN
+        SELECT shardid INTO refshardid FROM pg_dist_shard WHERE logicalrelid='ref_table'::regclass;
+        EXECUTE format('SELECT * from ref_table_%s FOR UPDATE', refshardid::text);
+      END
+    $$;
 }
 
 step "s2-view-dist"
@@ -79,13 +88,26 @@ step "s2-view-dist"
 
 step "s2-view-worker"
 {
-	SELECT query, query_hostname, query_hostport, master_query_host_name, master_query_host_port, state, wait_event_type, wait_event, usename, datname FROM citus_worker_stat_activity WHERE query NOT ILIKE '%pg_prepared_xacts%' AND query NOT ILIKE '%COMMIT%' ORDER BY query, query_hostport DESC;
+	SELECT query, query_hostname, query_hostport, master_query_host_name, 
+           master_query_host_port, state, wait_event_type, wait_event, usename, datname 
+    FROM citus_worker_stat_activity
+    WHERE query NOT ILIKE '%pg_prepared_xacts%' AND 
+          query NOT ILIKE '%COMMIT%' AND
+          query NOT ILIKE '%dump_local_wait_edges%'
+    ORDER BY query, query_hostport DESC;
 }
 
 
 step "s2-sleep"
 {
 	SELECT pg_sleep(0.5);
+}
+
+step "s2-active-transactions"
+{
+	-- Admin should be able to see all transactions
+	SELECT count(*) FROM get_all_active_transactions();
+	SELECT count(*) FROM get_global_active_transactions();
 }
 
 # we disable the daemon during the regression tests in order to get consistent results
@@ -106,3 +128,7 @@ permutation "s1-begin" "s2-begin" "s1-update-dist-table" "s2-lock-ref-table-plac
 # verify that *_dist_stat_activity() functions return the correct result when query
 # has a task on the coordinator.
 permutation "s1-begin" "s2-begin" "s1-update-ref-table" "s2-sleep" "s2-view-dist" "s2-view-worker" "s2-end" "s1-end"
+
+# verify that get_*_active_transactions() functions return the correct result when
+# the query has a task on the coordinator.
+permutation "s1-begin" "s2-begin" "s1-update-ref-table" "s2-active-transactions" "s1-end" "s2-end"
