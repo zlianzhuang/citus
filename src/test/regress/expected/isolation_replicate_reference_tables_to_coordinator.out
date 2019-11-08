@@ -19,9 +19,9 @@ step s2-lock-ref-table-placement-on-coordinator:
 a              
 
 1              
-2              
 3              
-4              
+5              
+7              
 step s1-lock-ref-table-placement-on-coordinator: 
     SELECT * FROM ref_table_8000000 FOR UPDATE;
  <waiting ...>
@@ -38,15 +38,72 @@ step s1-lock-ref-table-placement-on-coordinator: <... completed>
 a              
 
 1              
-2              
 3              
-4              
+5              
+7              
 step s2-update-dist-table: <... completed>
 error in steps deadlock-checker-call s1-lock-ref-table-placement-on-coordinator s2-update-dist-table: ERROR:  canceling the transaction since it was involved in a distributed deadlock
 step s1-end: 
     END;
 
 step s2-end: 
+    END;
+
+restore_isolation_tester_func
+
+               
+
+starting permutation: s1-begin s2-begin s1-update-ref-table s2-sleep s2-view-dist s2-view-worker s2-end s1-end
+create_distributed_table
+
+               
+step s1-begin: 
+    BEGIN;
+
+step s2-begin: 
+    BEGIN;
+
+step s1-update-ref-table: 
+    update ref_table set a = a + 1;
+
+step s2-sleep: 
+	SELECT pg_sleep(0.5);
+
+pg_sleep       
+
+               
+step s2-view-dist: 
+	SELECT query, query_hostname, query_hostport, master_query_host_name, master_query_host_port, state, wait_event_type, wait_event, usename, datname FROM citus_dist_stat_activity WHERE query NOT ILIKE '%pg_prepared_xacts%' AND query NOT ILIKE '%COMMIT%' ORDER BY query DESC;	
+
+query          query_hostname query_hostport master_query_host_namemaster_query_host_portstate          wait_event_typewait_event     usename        datname        
+
+
+    update ref_table set a = a + 1;
+coordinator_host57636          coordinator_host57636          idle in transactionClient         ClientRead     postgres       regression     
+
+    update ref_table set a = a + 1;
+localhost      57636          coordinator_host57636          idle in transactionClient         ClientRead     postgres       regression     
+step s2-view-worker: 
+	SELECT query, query_hostname, query_hostport, master_query_host_name, master_query_host_port, state, wait_event_type, wait_event, usename, datname FROM citus_worker_stat_activity WHERE query NOT ILIKE '%pg_prepared_xacts%' AND query NOT ILIKE '%COMMIT%' ORDER BY query, query_hostport DESC;
+
+query          query_hostname query_hostport master_query_host_namemaster_query_host_portstate          wait_event_typewait_event     usename        datname        
+
+SELECT * FROM dump_local_wait_edges()localhost      57638                         0              idle           Client         ClientRead     postgres       regression     
+SELECT * FROM dump_local_wait_edges()localhost      57638                         0              idle           Client         ClientRead     postgres       regression     
+SELECT * FROM dump_local_wait_edges()localhost      57637                         0              idle           Client         ClientRead     postgres       regression     
+SELECT * FROM dump_local_wait_edges()localhost      57637                         0              idle           Client         ClientRead     postgres       regression     
+SELECT * FROM dump_local_wait_edges()coordinator_host57636          coordinator_host57636          idle           Client         ClientRead     postgres       regression     
+SELECT * FROM dump_local_wait_edges()localhost      57636                         0              idle           Client         ClientRead     postgres       regression     
+SELECT * FROM dump_local_wait_edges()localhost      57636                         0              idle           Client         ClientRead     postgres       regression     
+SELECT * FROM dump_local_wait_edges()coordinator_host57636          coordinator_host57636          idle           Client         ClientRead     postgres       regression     
+UPDATE public.ref_table_8000000 ref_table SET a = (a OPERATOR(pg_catalog.+) 1)localhost      57638          coordinator_host57636          idle in transactionClient         ClientRead     postgres       regression     
+UPDATE public.ref_table_8000000 ref_table SET a = (a OPERATOR(pg_catalog.+) 1)localhost      57637          coordinator_host57636          idle in transactionClient         ClientRead     postgres       regression     
+UPDATE public.ref_table_8000000 ref_table SET a = (a OPERATOR(pg_catalog.+) 1)coordinator_host57636          coordinator_host57636          idle in transactionClient         ClientRead     postgres       regression     
+UPDATE public.ref_table_8000000 ref_table SET a = (a OPERATOR(pg_catalog.+) 1)localhost      57636          coordinator_host57636          idle in transactionClient         ClientRead     postgres       regression     
+step s2-end: 
+    END;
+
+step s1-end: 
     END;
 
 restore_isolation_tester_func
