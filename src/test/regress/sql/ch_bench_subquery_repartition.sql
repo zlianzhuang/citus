@@ -1,4 +1,4 @@
-SET citus.next_shard_id TO 1640000;
+SET citus.next_shard_id TO 1680000;
 CREATE SCHEMA ch_bench_subquery_repartition;
 SET search_path = ch_bench_subquery_repartition, public;
 SET citus.enable_repartition_joins TO on;
