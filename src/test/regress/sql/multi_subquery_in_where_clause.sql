@@ -129,16 +129,6 @@ FROM
 WHERE 
   user_id =ANY(SELECT user_id FROM users_table WHERE value_1 >= 1 AND value_1 <= 2) GROUP BY 1 ORDER BY 2 DESC LIMIT 5;
 
-set citus.enable_repartition_joins = on;
- SELECT
-  u.user_id, count(*)
-FROM
-  users_table u, events_table e
-WHERE
-  u.user_id = e.event_type AND
-  u.user_id =ANY(SELECT u2.user_id FROM users_table u2 WHERE u2.value_1 >= 1 AND u2.value_1 <= 2) GROUP BY 1 ORDER BY 2 DESC LIMIT 5;
-
-
 -- users that appeared more than 118 times
 SELECT 
   user_id

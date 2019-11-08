@@ -684,14 +684,7 @@ MultiNodeTree(Query *queryTree)
 		subqueryTree = subqueryRangeTableEntry->subquery;
 
 		/* ensure if subquery satisfies preconditions */
-		if (DeferErrorIfUnsupportedSubqueryRepartition(subqueryTree) != NULL)
-		{
-			RaiseDeferredErrorInternal(
-				DeferredError(ERRCODE_FEATURE_NOT_SUPPORTED,
-							  "complex joins are only supported when all distributed tables are "
-							  "joined on their distribution columns with equal operator",
-							  NULL, NULL), ERROR);
-		}
+		Assert(DeferErrorIfUnsupportedSubqueryRepartition(subqueryTree) == NULL);
 
 		subqueryNode = CitusMakeNode(MultiTable);
 		subqueryNode->relationId = SUBQUERY_RELATION_ID;
