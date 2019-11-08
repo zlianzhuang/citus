@@ -21,6 +21,7 @@
 #include "optimizer/optimizer.h"
 #else
 #include "optimizer/cost.h"
+#include "optimizer/clauses.h"
 #endif
 #include "rewrite/rewriteManip.h"
 
@@ -90,9 +91,10 @@ PostgreSQLCTEInlineCondition(CommonTableExpr *cte, CmdType cmdType)
 		!contain_volatile_functions(cte->ctequery) &&
 #if PG_VERSION_NUM >= 120000
 		(cte->ctematerialized == CTEMaterializeNever ||
-		 cte->ctematerialized == CTEMaterializeDefault)
+		 cte->ctematerialized == CTEMaterializeDefault))
+#else
+		 true)
 #endif
-		)
 	{
 		return true;
 	}
