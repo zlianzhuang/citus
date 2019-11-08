@@ -18,8 +18,8 @@
 #include "catalog/pg_type.h"
 #include "distributed/citus_nodefuncs.h"
 #include "distributed/citus_nodes.h"
+#include "distributed/cte_inline.h"
 #include "distributed/function_call_delegation.h"
-
 #include "distributed/insert_select_planner.h"
 #include "distributed/intermediate_results.h"
 #include "distributed/metadata_cache.h"
@@ -40,9 +40,8 @@
 #include "nodes/nodeFuncs.h"
 #include "parser/parsetree.h"
 #include "parser/parse_type.h"
-#include "rewrite/rewriteManip.h"
-#include "optimizer/optimizer.h"
 #if PG_VERSION_NUM >= 120000
+#include "optimizer/optimizer.h"
 #include "optimizer/plancat.h"
 #else
 #include "optimizer/cost.h"
@@ -100,21 +99,6 @@ static void ResetPlannerRestrictionContext(
 	PlannerRestrictionContext *plannerRestrictionContext);
 static bool HasUnresolvedExternParamsWalker(Node *expression, ParamListInfo boundParams);
 
-
-typedef struct inline_cte_walker_context
-{
-	const char *ctename;       /* name and relative level of target CTE */
-	int levelsup;
-	int refcount;              /* number of remaining references */
-	Query *ctequery;           /* query to substitute */
-
-	List *aliascolnames;  /* citus addition */
-} inline_cte_walker_context;
-static bool inline_cte_walker(Node *node, inline_cte_walker_context *context);
-static void inline_cte(Query *mainQuery, CommonTableExpr *cte);
-static void InlineCTEs(Query *query);
-static bool contain_dml(Node *node);
-static bool contain_dml_walker(Node *node, void *context);
 
 /* Distributed planner hook */
 PlannedStmt *
@@ -711,8 +695,10 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 	originalQuery = (Query *) ResolveExternalParams((Node *) originalQuery,
 													boundParams);
 
-
-	InlineCTEs(originalQuery);
+	/*
+	 * TODO: add comment
+	 */
+	InlineCTEsInQueryTree(originalQuery);
 
 	/*
 	 * Plan subqueries and CTEs that cannot be pushed down by recursively
@@ -811,197 +797,6 @@ CreateDistributedPlan(uint64 planId, Query *originalQuery, Query *query, ParamLi
 	Assert(distributedPlan && distributedPlan->planningError == NULL);
 
 	return distributedPlan;
-}
-
-
-static void
-InlineCTEs(Query *query)
-{
-	ListCell *cteCell = NULL;
-	CmdType cmdType = query->commandType;
-
-	List *copiedList = list_copy(query->cteList);
-
-	if (query->hasRecursive || query->hasModifyingCTE)
-	{
-		return;
-	}
-
-	foreach(cteCell, copiedList)
-	{
-		CommonTableExpr *cte = (CommonTableExpr *) lfirst(cteCell);
-
-		if (/*(cte->ctematerialized == CTEMaterializeNever || */
-			/*(cte->ctematerialized == CTEMaterializeDefault && */
-			cte->cterefcount == 1 && /*)) && */
-			!cte->cterecursive &&
-			cmdType == CMD_SELECT &&
-			!contain_dml(cte->ctequery) &&
-			!contain_volatile_functions(cte->ctequery))
-		{
-			inline_cte(query, cte);
-
-			/* TODO: get rid of the hack */
-			query->cteList = list_delete(query->cteList, cte);
-		}
-	}
-}
-
-
-/*
- * inline_cte: convert RTE_CTE references to given CTE into RTE_SUBQUERYs
- */
-static void
-inline_cte(Query *mainQuery, CommonTableExpr *cte)
-{
-	struct inline_cte_walker_context context;
-
-	context.ctename = cte->ctename;
-
-	/* Start at levelsup = -1 because we'll immediately increment it */
-	context.levelsup = -1;
-	context.refcount = cte->cterefcount;
-	context.ctequery = castNode(Query, cte->ctequery);
-	context.aliascolnames = cte->aliascolnames;
-
-	(void) inline_cte_walker((Node *) mainQuery, &context);
-
-	cte->cterefcount = 0;
-
-	/* Assert we replaced all references */
-	Assert(context.refcount == 0);
-}
-
-
-static bool
-inline_cte_walker(Node *node, inline_cte_walker_context *context)
-{
-	if (node == NULL)
-	{
-		return false;
-	}
-	if (IsA(node, Query))
-	{
-		Query *query = (Query *) node;
-
-		context->levelsup++;
-
-		/*
-		 * Visit the query's RTE nodes after their contents; otherwise
-		 * query_tree_walker would descend into the newly inlined CTE query,
-		 * which we don't want.
-		 */
-		(void) query_tree_walker(query, inline_cte_walker, context,
-								 QTW_EXAMINE_RTES_AFTER);
-
-		context->levelsup--;
-
-		return false;
-	}
-	else if (IsA(node, RangeTblEntry))
-	{
-		RangeTblEntry *rte = (RangeTblEntry *) node;
-
-		if (rte->rtekind == RTE_CTE &&
-			strcmp(rte->ctename, context->ctename) == 0 &&
-			rte->ctelevelsup == context->levelsup)
-		{
-			/*
-			 * Found a reference to replace.  Generate a copy of the CTE query
-			 * with appropriate level adjustment for outer references (e.g.,
-			 * to other CTEs).
-			 */
-			Query *newquery = copyObject(context->ctequery);
-
-			/* Citus addition */
-			List *columnAliasList = context->aliascolnames;
-			int columnAliasCount = list_length(columnAliasList);
-			int columnNumber = 1;
-
-			if (context->levelsup > 0)
-			{
-				IncrementVarSublevelsUp((Node *) newquery, context->levelsup, 1);
-			}
-
-			/*
-			 * Convert the RTE_CTE RTE into a RTE_SUBQUERY.
-			 *
-			 * Historically, a FOR UPDATE clause has been treated as extending
-			 * into views and subqueries, but not into CTEs.  We preserve this
-			 * distinction by not trying to push rowmarks into the new
-			 * subquery.
-			 */
-			rte->rtekind = RTE_SUBQUERY;
-			rte->subquery = newquery;
-			rte->security_barrier = false;
-
-			for (; columnNumber < list_length(rte->subquery->targetList) + 1;
-				 ++columnNumber)
-			{
-				if (columnAliasCount >= columnNumber)
-				{
-					Value *columnAlias = (Value *) list_nth(columnAliasList,
-															columnNumber - 1);
-
-					TargetEntry *te = list_nth(rte->subquery->targetList, columnNumber -
-											   1);
-					Assert(IsA(columnAlias, String));
-
-					te->resname = strVal(columnAlias);
-				}
-			}
-
-			/* Zero out CTE-specific fields */
-			rte->ctename = NULL;
-			rte->ctelevelsup = 0;
-			rte->self_reference = false;
-			rte->coltypes = NIL;
-			rte->coltypmods = NIL;
-			rte->colcollations = NIL;
-
-			/* Count the number of replacements we've done */
-			context->refcount--;
-		}
-
-		return false;
-	}
-
-	return expression_tree_walker(node, inline_cte_walker, context);
-}
-
-
-/*
- * contain_dml: is any subquery not a plain SELECT?
- *
- * We reject SELECT FOR UPDATE/SHARE as well as INSERT etc.
- */
-static bool
-contain_dml(Node *node)
-{
-	return contain_dml_walker(node, NULL);
-}
-
-
-static bool
-contain_dml_walker(Node *node, void *context)
-{
-	if (node == NULL)
-	{
-		return false;
-	}
-	if (IsA(node, Query))
-	{
-		Query *query = (Query *) node;
-
-		if (query->commandType != CMD_SELECT ||
-			query->rowMarks != NIL)
-		{
-			return true;
-		}
-
-		return query_tree_walker(query, contain_dml_walker, context, 0);
-	}
-	return expression_tree_walker(node, contain_dml_walker, context);
 }
 
 
