@@ -32,7 +32,6 @@ static void QualifyAlterTableStmt(AlterTableStmt *stmt);
 static void QualifyAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt);
 static void QualifyAlterOwnerStmt(AlterOwnerStmt *stmt);
 static void QualifyAlterObjectDependsStmt(AlterObjectDependsStmt *stmt);
-static void QualifyCreateExtensionStmt(CreateExtensionStmt *stmt);
 
 /*
  * QualifyTreeNode transforms the statement in place and makes all (supported) statements
@@ -95,12 +94,6 @@ QualifyTreeNode(Node *stmt)
 		case T_AlterObjectDependsStmt:
 		{
 			QualifyAlterObjectDependsStmt(castNode(AlterObjectDependsStmt, stmt));
-			return;
-		}
-
-		case T_CreateExtensionStmt:
-		{
-			QualifyCreateExtensionStmt(castNode(CreateExtensionStmt, stmt));
 			return;
 		}
 
@@ -261,70 +254,4 @@ QualifyAlterObjectDependsStmt(AlterObjectDependsStmt *stmt)
 			return;
 		}
 	}
-}
-
-static void
-QualifyCreateExtensionStmt(CreateExtensionStmt *stmt)
-{
-	//TODO: @onurctirtir implement this function
-	// implementation can be moved into a seperate file
-
-	// we may need to qualiy DefElem list
-	List *optionsList = stmt->options;
-	ListCell *optionsCell = NULL;
-	
-	bool newVersionSpecified  = false;
-	bool oldVersionSpecified  = false;
-	bool schemaSpecified  = false;
-
-	// check if the above ones are specified in createExtension statement
-	foreach(optionsCell, optionsList)
-	{
-		// TODO:: @onurctirtir
-		// check if lookup functions alredy exist in postgres or citus codebase
-		DefElem *defElement = (DefElem *) lfirst(optionsCell);
-
-		if (strncmp(defElement->defname, "new_version", NAMEDATALEN) == 0)
-		{
-			newVersionSpecified = true;
-		}
-		else if (strncmp(defElement->defname, "old_version", NAMEDATALEN) == 0)
-		{
-			oldVersionSpecified = true;
-		}
-		else if (strncmp(defElement->defname, "schema", NAMEDATALEN) == 0)
-		{
-			schemaSpecified = true;
-		}
-		else if (strncmp(defElement->defname, "cascade", NAMEDATALEN) == 0)
-		{
-			continue;
-		}
-		else
-		{
-			// I do not expect other than the above ones
-			Assert(false);
-		}	
-	}
-
-	// manipulate stmt so the missing specifiers just found above are included in stmt as well
-	// TODO: where to get version num
-	if (!newVersionSpecified)
-	{
-		DefElem *newDefElement = makeDefElem("new_version", (Node*)(makeString("version_num")), -1);
-		optionsList = lappend(optionsList, newDefElement);
-	}
-	// TODO: where to get version num
-	if (!oldVersionSpecified)
-	{
-		DefElem *newDefElement = makeDefElem("old_version", (Node*)(makeString("version_num")), -1);
-		optionsList = lappend(optionsList, newDefElement);
-
-	}
-	// TODO: where to schema name
-	if (!schemaSpecified)
-	{
-		DefElem *newDefElement = makeDefElem("schema", (Node*)(makeString("schema_name")), -1);
-		optionsList = lappend(optionsList, newDefElement);
-	}	
 }
